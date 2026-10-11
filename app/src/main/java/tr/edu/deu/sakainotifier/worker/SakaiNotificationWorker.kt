@@ -90,16 +90,11 @@ class SakaiNotificationWorker(
                             stateManager.markProcessed(newMails)
                         }
                     } else {
-                        val ex = mailResult.exceptionOrNull()
-                        if (ex is java.io.IOException) {
-                            anyNetworkFailure = true
-                        }
+                        // Mail server outage should not break Sakai notifications.
+                        // It will simply re-attempt on the next regular 20-min cycle.
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
-                    if (e is java.io.IOException) {
-                        anyNetworkFailure = true
-                    }
                 }
             }
         }

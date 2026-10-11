@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tr.edu.deu.sakainotifier.data.api.AuthResult
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
+import tr.edu.deu.sakainotifier.data.api.WebmailTestResult
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
 import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
 import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
@@ -69,6 +70,10 @@ fun MainScreen(
     var isAddingAccount by remember { mutableStateOf(false) }
     var accountFeedbackText by remember { mutableStateOf<String?>(null) }
     var accountFeedbackSuccess by remember { mutableStateOf(false) }
+    var isFeedbackWarning by remember { mutableStateOf(false) }
+    var pendingBypassUser by remember { mutableStateOf<String?>(null) }
+    var pendingBypassPassword by remember { mutableStateOf<String?>(null) }
+    var pendingBypassEmail by remember { mutableStateOf<String?>(null) }
 
     var isManualChecking by remember { mutableStateOf(false) }
     var manualCheckResultText by remember { mutableStateOf<String?>(null) }
@@ -87,9 +92,9 @@ fun MainScreen(
 
     val currentAppVersion = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.0"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.1"
         } catch (_: Exception) {
-            "1.2.0"
+            "1.2.1"
         }
     }
 
@@ -236,33 +241,60 @@ fun MainScreen(
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isAnyActive) Color(0xFFE8F5E9) else Color(0xFFECEFF1)
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = if (isAnyActive) DeuSuccess.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
                     )
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Column {
-                            Text(
-                                text = if (isAnyActive) "Takip Aktif (Çalışıyor)" else "Takip Durduruldu",
-                                fontWeight = FontWeight.Bold,
-                                color = if (isAnyActive) DeuSuccess else Color.DarkGray,
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                text = if (isAnyActive)
-                                    "Kayıtlı hesaplar her $selectedInterval dakikada bir kontrol ediliyor."
-                                else
-                                    "Bildirimleri almak için aşağıdaki servisleri başlatın.",
-                                fontSize = 13.sp,
-                                color = Color.Gray
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isAnyActive) "Arka Plan Takibi Aktif" else "Arka Plan Takibi Durduruldu",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 16.sp
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (isAnyActive)
+                                        "Kayıtlı hesaplar her $selectedInterval dakikada bir taranıyor."
+                                    else
+                                        "Bildirimleri almak için aşağıdaki servisleri başlatın.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isAnyActive) DeuSuccess.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isAnyActive) DeuSuccess.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
+                                )
+                            ) {
+                                Text(
+                                    text = if (isAnyActive) "● ÇALIŞIYOR" else "○ DURDURULDU",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = if (isAnyActive) DeuSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
                         }
 
-                        HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 
                         // Sakai Announcement Toggle
                         Row(
@@ -274,12 +306,13 @@ fun MainScreen(
                                 Text(
                                     text = "🎓 Sakai Duyuru Takibi",
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Duyuru ve ödevler için bildirim gönderir.",
                                     fontSize = 12.sp,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -311,12 +344,13 @@ fun MainScreen(
                                 Text(
                                     text = "✉️ Öğrenci E-postası Takibi",
                                     fontWeight = FontWeight.SemiBold,
-                                    fontSize = 14.sp
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = "Gelen yeni öğrenci mailleri için bildirim gönderir.",
                                     fontSize = 12.sp,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Switch(
@@ -483,14 +517,14 @@ fun MainScreen(
                                                         )
                                                         if (!acc.emailAddress.isNullOrBlank()) {
                                                             Surface(
-                                                                color = Color(0xFFFEF3C7),
+                                                                color = MaterialTheme.colorScheme.secondaryContainer,
                                                                 shape = RoundedCornerShape(4.dp)
                                                             ) {
                                                                 Text(
                                                                     text = "✉️ Mail Bağlı",
                                                                     fontSize = 10.sp,
                                                                     fontWeight = FontWeight.SemiBold,
-                                                                    color = Color(0xFF92400E),
+                                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                                                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                                                                 )
                                                             }
@@ -499,13 +533,13 @@ fun MainScreen(
                                                     Text(
                                                         text = acc.username,
                                                         fontSize = 11.sp,
-                                                        color = Color.Gray
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                                     )
                                                     if (!acc.emailAddress.isNullOrBlank()) {
                                                         Text(
                                                             text = "Mail: ${acc.emailAddress}",
                                                             fontSize = 11.sp,
-                                                            color = Color(0xFF1E40AF)
+                                                            color = MaterialTheme.colorScheme.primary
                                                         )
                                                     }
                                                 }
@@ -581,7 +615,12 @@ fun MainScreen(
 
                         OutlinedTextField(
                             value = inputUsername,
-                            onValueChange = { inputUsername = it },
+                            onValueChange = {
+                                inputUsername = it
+                                pendingBypassUser = null
+                                pendingBypassPassword = null
+                                pendingBypassEmail = null
+                            },
                             label = { Text("Öğrenci Numarası veya E-posta") },
                             placeholder = { Text("Örn: 2024123456 veya 2024123456@ogr.deu.edu.tr") },
                             modifier = Modifier.fillMaxWidth(),
@@ -590,7 +629,12 @@ fun MainScreen(
 
                         OutlinedTextField(
                             value = inputPassword,
-                            onValueChange = { inputPassword = it },
+                            onValueChange = {
+                                inputPassword = it
+                                pendingBypassUser = null
+                                pendingBypassPassword = null
+                                pendingBypassEmail = null
+                            },
                             label = { Text("Şifre") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -605,19 +649,69 @@ fun MainScreen(
 
                         OutlinedTextField(
                             value = inputEmail,
-                            onValueChange = { inputEmail = it },
+                            onValueChange = {
+                                inputEmail = it
+                                pendingBypassUser = null
+                                pendingBypassPassword = null
+                                pendingBypassEmail = null
+                            },
                             label = { Text("Öğrenci E-postası (İsteğe Bağlı)") },
                             placeholder = { Text("Örn: ad.soyad@ogr.deu.edu.tr") },
                             supportingText = {
                                 Text(
                                     text = "Boş bırakılırsa e-posta takibi yapılmaz. Ayrı şifre gerekmez (şifre aynıdır).",
                                     fontSize = 11.sp,
-                                    color = Color.Gray
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+
+                        fun saveAccountAndComplete(acc: SakaiAccount, feedbackMsg: String, isWarning: Boolean = false) {
+                            if (editingAccountUsername != null && !editingAccountUsername.equals(acc.username, ignoreCase = true)) {
+                                securePrefs.removeAccount(editingAccountUsername!!)
+                            }
+
+                            securePrefs.saveAccount(acc)
+                            registeredAccounts = securePrefs.getAccounts()
+                            stateManager.checkAccountSwitch(acc.username)
+
+                            editingAccountUsername = null
+                            inputUsername = ""
+                            inputPassword = ""
+                            inputEmail = ""
+                            pendingBypassUser = null
+                            pendingBypassPassword = null
+                            pendingBypassEmail = null
+
+                            accountFeedbackText = feedbackMsg
+                            accountFeedbackSuccess = !isWarning
+                            isFeedbackWarning = isWarning
+
+                            coroutineScope.launch {
+                                // Fetch and populate initial recent notifications for this account
+                                val initFetch = apiClient.fetchNotifications(acc.username, acc.password)
+                                if (initFetch.isSuccess) {
+                                    val list = initFetch.getOrDefault(emptyList())
+                                    val tagged = list.map { it.copy(accountUsername = acc.username) }
+                                    stateManager.filterNewNotifications(tagged)
+                                    stateManager.markProcessed(tagged.take(15))
+                                }
+
+                                // If email configured, fetch initial unread emails
+                                if (!acc.emailAddress.isNullOrBlank()) {
+                                    val initMail = webmailClient.fetchUnreadEmails(acc.emailAddress, acc.password, acc.username)
+                                    if (initMail.isSuccess) {
+                                        val mailList = initMail.getOrDefault(emptyList())
+                                        stateManager.filterNewEmailNotifications(mailList)
+                                        stateManager.markProcessed(mailList.take(5))
+                                    }
+                                }
+
+                                recentNotifications = stateManager.getAllRecentNotifications(securePrefs.getAccounts().map { it.username })
+                            }
+                        }
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -634,75 +728,59 @@ fun MainScreen(
 
                                     isAddingAccount = true
                                     accountFeedbackText = null
+                                    isFeedbackWarning = false
+                                    pendingBypassUser = null
+                                    pendingBypassPassword = null
+                                    pendingBypassEmail = null
+
                                     coroutineScope.launch {
                                         when (val res = authClient.authenticate(normalizedUser, inputPassword)) {
                                             is AuthResult.Success -> {
+                                                val shortName = SakaiUsernameUtils.shortUsername(normalizedUser)
                                                 // If student email is entered, ALSO test Webmail login
                                                 if (!normalizedEmail.isNullOrBlank()) {
-                                                    val webmailRes = webmailClient.testLogin(normalizedEmail, inputPassword)
-                                                    if (webmailRes.isFailure) {
-                                                        val mailErrMsg = webmailRes.exceptionOrNull()?.message ?: "Giriş başarısız."
-                                                        accountFeedbackText = "❌ Sakai girişi başarılı fakat Öğrenci E-postası girişi başarısız: $mailErrMsg"
-                                                        accountFeedbackSuccess = false
-                                                        isAddingAccount = false
-                                                        return@launch
+                                                    when (val webmailRes = webmailClient.testLogin(normalizedEmail, inputPassword)) {
+                                                        is WebmailTestResult.Success -> {
+                                                            saveAccountAndComplete(
+                                                                SakaiAccount(normalizedUser, inputPassword, normalizedEmail),
+                                                                "✅ Giriş doğrulandı! $shortName için Sakai ve Öğrenci E-postası bağlandı."
+                                                            )
+                                                        }
+                                                        is WebmailTestResult.ServerUnavailable -> {
+                                                            // University mail server is down or unresponsive.
+                                                            // Allow saving anyway with an informative warning so Sakai works immediately.
+                                                            saveAccountAndComplete(
+                                                                SakaiAccount(normalizedUser, inputPassword, normalizedEmail),
+                                                                "⚠️ Sakai girişi doğrulandı ve kaydedildi! DEU E-posta sunucusuna şu an ulaşılamıyor (sunucu kapalı veya bakımda olabilir). Sunucu açıldığında mailleriniz arka planda otomatik taranacaktır.",
+                                                                isWarning = true
+                                                            )
+                                                        }
+                                                        is WebmailTestResult.InvalidCredentials -> {
+                                                            // Rejected credentials on student mail server
+                                                            accountFeedbackText = "❌ Sakai girişi başarılı fakat Öğrenci E-postası girişi başarısız: ${webmailRes.message}\nE-posta adresinizi kontrol edebilir veya aşağıdaki seçeneklerle devam edebilirsiniz."
+                                                            accountFeedbackSuccess = false
+                                                            isFeedbackWarning = false
+                                                            pendingBypassUser = normalizedUser
+                                                            pendingBypassPassword = inputPassword
+                                                            pendingBypassEmail = normalizedEmail
+                                                        }
                                                     }
-                                                }
-
-                                                if (editingAccountUsername != null && !editingAccountUsername.equals(normalizedUser, ignoreCase = true)) {
-                                                    securePrefs.removeAccount(editingAccountUsername!!)
-                                                }
-
-                                                val acc = SakaiAccount(
-                                                    username = normalizedUser,
-                                                    password = inputPassword,
-                                                    emailAddress = normalizedEmail
-                                                )
-                                                securePrefs.saveAccount(acc)
-                                                registeredAccounts = securePrefs.getAccounts()
-                                                stateManager.checkAccountSwitch(normalizedUser)
-
-                                                val shortName = acc.shortUsername
-                                                editingAccountUsername = null
-                                                inputUsername = ""
-                                                inputPassword = ""
-                                                inputEmail = ""
-
-                                                accountFeedbackText = if (normalizedEmail != null) {
-                                                    "✅ Giriş doğrulandı! $shortName için Sakai ve Öğrenci E-postası bağlandı."
                                                 } else {
-                                                    "✅ Giriş doğrulandı! $shortName Sakai hesabı başarıyla kaydedildi."
+                                                    saveAccountAndComplete(
+                                                        SakaiAccount(normalizedUser, inputPassword, null),
+                                                        "✅ Giriş doğrulandı! $shortName Sakai hesabı başarıyla kaydedildi."
+                                                    )
                                                 }
-                                                accountFeedbackSuccess = true
-
-                                                // Fetch and populate initial recent notifications for this account
-                                                val initFetch = apiClient.fetchNotifications(normalizedUser, inputPassword)
-                                                if (initFetch.isSuccess) {
-                                                    val list = initFetch.getOrDefault(emptyList())
-                                                    val tagged = list.map { it.copy(accountUsername = normalizedUser) }
-                                                    stateManager.filterNewNotifications(tagged)
-                                                    stateManager.markProcessed(tagged.take(15))
-                                                }
-
-                                                // If email configured, fetch initial unread emails
-                                                if (normalizedEmail != null) {
-                                                    val initMail = webmailClient.fetchUnreadEmails(normalizedEmail, inputPassword, normalizedUser)
-                                                    if (initMail.isSuccess) {
-                                                        val mailList = initMail.getOrDefault(emptyList())
-                                                        stateManager.filterNewEmailNotifications(mailList)
-                                                        stateManager.markProcessed(mailList.take(5))
-                                                    }
-                                                }
-
-                                                recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                                             }
                                             is AuthResult.InvalidCredentials -> {
                                                 accountFeedbackText = "❌ Sakai Hatası: Kullanıcı adı ya da şifreniz hatalı."
                                                 accountFeedbackSuccess = false
+                                                isFeedbackWarning = false
                                             }
                                             is AuthResult.Error -> {
                                                 accountFeedbackText = "❌ Sakai Bağlantı hatası: ${res.message}"
                                                 accountFeedbackSuccess = false
+                                                isFeedbackWarning = false
                                             }
                                         }
                                         isAddingAccount = false
@@ -725,12 +803,83 @@ fun MainScreen(
                         }
 
                         accountFeedbackText?.let { text ->
+                            val feedbackColor = when {
+                                accountFeedbackSuccess -> DeuSuccess
+                                isFeedbackWarning -> Color(0xFFE65100)
+                                else -> MaterialTheme.colorScheme.error
+                            }
                             Text(
                                 text = text,
-                                color = if (accountFeedbackSuccess) DeuSuccess else MaterialTheme.colorScheme.error,
+                                color = feedbackColor,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
+                        }
+
+                        // Bypass action options when Webmail credentials were rejected
+                        if (pendingBypassUser != null && pendingBypassPassword != null) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = "Nasıl devam etmek istersiniz?",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 13.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val pUser = pendingBypassUser!!
+                                                val pPass = pendingBypassPassword!!
+                                                val shortName = SakaiUsernameUtils.shortUsername(pUser)
+                                                saveAccountAndComplete(
+                                                    SakaiAccount(pUser, pPass, null),
+                                                    "✅ $shortName yalnızca Sakai hesabı olarak kaydedildi."
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Yalnızca Sakai Olarak Kaydet", fontSize = 11.sp, maxLines = 1)
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                val pUser = pendingBypassUser!!
+                                                val pPass = pendingBypassPassword!!
+                                                val pEmail = pendingBypassEmail
+                                                val shortName = SakaiUsernameUtils.shortUsername(pUser)
+                                                saveAccountAndComplete(
+                                                    SakaiAccount(pUser, pPass, pEmail),
+                                                    "⚠️ $shortName kaydedildi. E-posta sunucusu girişi reddettiğinden şifrenizi veya adresinizi daha sonra kontrol ediniz.",
+                                                    isWarning = true
+                                                )
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = MaterialTheme.colorScheme.secondary
+                                            ),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("Yine de Bu E-posta İle Kaydet", fontSize = 11.sp, maxLines = 1)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -843,7 +992,8 @@ fun MainScreen(
                                         try {
                                             val summaries = mutableListOf<String>()
                                             var totalNew = 0
-                                            var anyFail = false
+                                            var anySakaiFail = false
+                                            var anyMailFail = false
 
                                             for (acc in currentAccs) {
                                                 stateManager.checkAccountSwitch(acc.username)
@@ -869,7 +1019,7 @@ fun MainScreen(
                                                         parts.add("duyurular güncel")
                                                     }
                                                 } else {
-                                                    anyFail = true
+                                                    anySakaiFail = true
                                                     val err = fetchRes.exceptionOrNull()?.message?.take(30) ?: "Bağlantı hatası"
                                                     parts.add("Sakai: ❌ $err")
                                                 }
@@ -895,9 +1045,9 @@ fun MainScreen(
                                                             parts.add("mail güncel")
                                                         }
                                                     } else {
-                                                        anyFail = true
-                                                        val mErr = mailRes.exceptionOrNull()?.message?.take(30) ?: "Mail hatası"
-                                                        parts.add("Mail: ❌ $mErr")
+                                                        anyMailFail = true
+                                                        val mErr = mailRes.exceptionOrNull()?.message?.take(30) ?: "sunucuya ulaşılamadı"
+                                                        parts.add("Mail: ⚠️ $mErr")
                                                     }
                                                 }
 
@@ -909,8 +1059,11 @@ fun MainScreen(
                                             if (totalNew > 0) {
                                                 manualCheckResultText = "✅ " + summaries.joinToString(" | ")
                                                 manualCheckSuccess = true
-                                            } else if (!anyFail) {
+                                            } else if (!anySakaiFail && !anyMailFail) {
                                                 manualCheckResultText = "✅ Tüm hesaplar kontrol edildi (${summaries.joinToString(" | ")})."
+                                                manualCheckSuccess = true
+                                            } else if (!anySakaiFail && anyMailFail) {
+                                                manualCheckResultText = "ℹ️ Sakai güncel (Mail sunucusuna ulaşılamadı): " + summaries.joinToString(" | ")
                                                 manualCheckSuccess = true
                                             } else {
                                                 manualCheckResultText = "⚠️ Sonuç: " + summaries.joinToString(" | ")

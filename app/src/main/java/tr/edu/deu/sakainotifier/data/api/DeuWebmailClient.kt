@@ -34,6 +34,12 @@ sealed class WebmailAuthResult {
     data class Error(val message: String, val cause: Throwable? = null) : WebmailAuthResult()
 }
 
+sealed class WebmailTestResult {
+    object Success : WebmailTestResult()
+    data class InvalidCredentials(val message: String = "Öğrenci e-posta adresi ya da şifreniz hatalı.") : WebmailTestResult()
+    data class ServerUnavailable(val message: String = "DEU e-posta sunucusuna şu an ulaşılamıyor.", val cause: Throwable? = null) : WebmailTestResult()
+}
+
 class DeuWebmailClient(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(false)
@@ -220,11 +226,11 @@ class DeuWebmailClient(
         }
     }
 
-    suspend fun testLogin(email: String, pass: String): Result<Boolean> {
+    suspend fun testLogin(email: String, pass: String): WebmailTestResult {
         return when (val res = authenticate(email, pass)) {
-            is WebmailAuthResult.Success -> Result.success(true)
-            is WebmailAuthResult.InvalidCredentials -> Result.failure(Exception(res.message))
-            is WebmailAuthResult.Error -> Result.failure(Exception(res.message, res.cause))
+            is WebmailAuthResult.Success -> WebmailTestResult.Success
+            is WebmailAuthResult.InvalidCredentials -> WebmailTestResult.InvalidCredentials(res.message)
+            is WebmailAuthResult.Error -> WebmailTestResult.ServerUnavailable(res.message, res.cause)
         }
     }
 
