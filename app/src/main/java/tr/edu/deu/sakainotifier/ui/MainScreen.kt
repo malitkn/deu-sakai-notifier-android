@@ -3,6 +3,7 @@ package tr.edu.deu.sakainotifier.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -288,12 +289,19 @@ fun MainScreen(
                             color = Color.Gray
                         )
 
-                        val intervals = listOf(20, 30, 45, 60, 120)
-                        Row(
+                        val intervals = listOf(
+                            20 to "20 dk",
+                            30 to "30 dk",
+                            45 to "45 dk",
+                            60 to "1 saat",
+                            120 to "2 saat"
+                        )
+                        FlowRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            intervals.forEach { minutes ->
+                            intervals.forEach { (minutes, label) ->
                                 val isSelected = selectedInterval == minutes
                                 FilterChip(
                                     selected = isSelected,
@@ -305,7 +313,7 @@ fun MainScreen(
                                         }
                                     },
                                     label = {
-                                        Text(if (minutes >= 60) "${minutes / 60} sa" else "$minutes dk")
+                                        Text(label)
                                     }
                                 )
                             }
@@ -357,8 +365,16 @@ fun MainScreen(
                                     val fetchRes = apiClient.fetchNotifications(normalizedUser, password)
                                     if (fetchRes.isSuccess) {
                                         val allList = fetchRes.getOrDefault(emptyList())
+                                        val wasFirstBoot = stateManager.isFirstBoot
                                         val newOnes = stateManager.filterNewNotifications(allList)
-                                        if (newOnes.isNotEmpty()) {
+                                        if (wasFirstBoot) {
+                                            if (allList.isNotEmpty()) {
+                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Mevcut ${allList.size} duyurunuz listelendi; bundan sonraki yeni duyurularda anlık bildirim alacaksınız."
+                                            } else {
+                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Sakai'de henüz duyurunuz bulunmuyor."
+                                            }
+                                            manualCheckSuccess = true
+                                        } else if (newOnes.isNotEmpty()) {
                                             for (notif in newOnes) {
                                                 NotificationHelper.showNotification(context, notif)
                                             }
@@ -446,52 +462,70 @@ fun NotificationItemCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(8.dp)),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            .clip(RoundedCornerShape(12.dp)),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            notif.siteTitle?.let {
-                Text(
-                    text = it,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = DeuNavy
-                )
+            notif.siteTitle?.let { site ->
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = site,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
             }
             Text(
                 text = notif.title,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp
+                fontWeight = FontWeight.Bold,
+                fontSize = 15.sp,
+                color = MaterialTheme.colorScheme.onSurface
             )
-            notif.body?.let {
+            notif.body?.let { bodyText ->
                 Text(
-                    text = it,
-                    fontSize = 12.sp,
-                    color = Color.DarkGray,
-                    maxLines = 3
+                    text = bodyText,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    lineHeight = 18.sp,
+                    maxLines = 4
                 )
             }
-            notif.publishedAt?.let {
-                Text(
-                    text = "Tarih: $it",
-                    fontSize = 10.sp,
-                    color = Color.Gray
-                )
-            }
-            notif.url?.let { link ->
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Duyuruyu Tarayıcıda Aç ↗",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.clickable { onOpenUrl(link) }
-                )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                notif.publishedAt?.let { dateStr ->
+                    Text(
+                        text = "📅 $dateStr",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                    )
+                }
+                notif.url?.let { link ->
+                    Text(
+                        text = "Duyuruyu Aç ↗",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .clickable { onOpenUrl(link) }
+                            .padding(horizontal = 4.dp, vertical = 2.dp)
+                    )
+                }
             }
         }
     }
