@@ -84,9 +84,7 @@ class SakaiNotificationWorker(
                         val newMails = stateManager.filterNewEmailNotifications(unreadMails)
 
                         if (newMails.isNotEmpty()) {
-                            for (emailNotif in newMails) {
-                                NotificationHelper.showNotification(context, emailNotif, account.username)
-                            }
+                            NotificationHelper.showEmailNotifications(context, newMails, account.username)
                             stateManager.markProcessed(newMails)
                         }
                     } else {

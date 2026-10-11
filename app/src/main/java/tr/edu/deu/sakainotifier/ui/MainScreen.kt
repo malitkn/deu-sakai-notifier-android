@@ -92,9 +92,9 @@ fun MainScreen(
 
     val currentAppVersion = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.1"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.2"
         } catch (_: Exception) {
-            "1.2.1"
+            "1.2.2"
         }
     }
 
@@ -1035,9 +1035,7 @@ fun MainScreen(
                                                         val mailList = mailRes.getOrDefault(emptyList())
                                                         val newMails = stateManager.filterNewEmailNotifications(mailList)
                                                         if (newMails.isNotEmpty()) {
-                                                            for (notif in newMails) {
-                                                                NotificationHelper.showNotification(context, notif, acc.username)
-                                                            }
+                                                            NotificationHelper.showEmailNotifications(context, newMails, acc.username)
                                                             stateManager.markProcessed(newMails)
                                                             totalNew += newMails.size
                                                             parts.add("${newMails.size} yeni mail")

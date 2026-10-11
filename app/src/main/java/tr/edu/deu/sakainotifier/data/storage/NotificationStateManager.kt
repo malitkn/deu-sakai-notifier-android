@@ -161,7 +161,8 @@ class NotificationStateManager(context: Context) {
 
     /**
      * Filters incoming student webmail notifications.
-     * On first check for an account, alerts up to 3 active emails and marks all as seen (bootstrap).
+     * On first check for an account, silently marks all existing unread emails as seen (baseline)
+     * so that NO push alerts or vibration spam occur for pre-existing inbox emails.
      */
     fun filterNewEmailNotifications(emails: List<SakaiNotification>): List<SakaiNotification> {
         val seenIds = getSeenIds()
@@ -179,7 +180,13 @@ class NotificationStateManager(context: Context) {
                 .putBoolean(getAccountKey(KEY_IS_FIRST_MAIL_BOOT), false)
                 .apply()
 
-            return emails.take(3)
+            // Silently populate recent notifications cache so emails are visible in the app,
+            // but return emptyList() to avoid sending push notifications for old inbox emails.
+            val recentCache = emails.take(20)
+            if (recentCache.isNotEmpty()) {
+                saveRecentNotifications(recentCache)
+            }
+            return emptyList()
         }
 
         return emails.filter { notif ->
