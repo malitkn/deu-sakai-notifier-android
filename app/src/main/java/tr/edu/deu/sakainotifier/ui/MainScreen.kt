@@ -64,6 +64,19 @@ fun MainScreen(
     var manualCheckSuccess by remember { mutableStateOf(false) }
     var recentNotifications by remember { mutableStateOf(stateManager.getRecentNotifications()) }
 
+    // Auto-refresh notifications list when background worker updates SharedPreferences
+    DisposableEffect(Unit) {
+        val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == NotificationStateManager.KEY_RECENT_NOTIFICATIONS) {
+                recentNotifications = stateManager.getRecentNotifications()
+            }
+        }
+        stateManager.registerChangeListener(listener)
+        onDispose {
+            stateManager.unregisterChangeListener(listener)
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -135,7 +148,7 @@ fun MainScreen(
                                 isMonitoringActive = active
                                 securePrefs.isMonitoringActive = active
                                 if (active) {
-                                    WorkScheduler.schedule(context, selectedInterval)
+                                    WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
                                     Toast.makeText(context, "Sakai takibi başlatıldı.", Toast.LENGTH_SHORT).show()
                                 } else {
                                     WorkScheduler.cancel(context)
@@ -309,7 +322,7 @@ fun MainScreen(
                                         selectedInterval = minutes
                                         securePrefs.pollIntervalMinutes = minutes
                                         if (isMonitoringActive) {
-                                            WorkScheduler.schedule(context, minutes)
+                                            WorkScheduler.schedule(context, minutes, forceUpdate = true)
                                         }
                                     },
                                     label = {

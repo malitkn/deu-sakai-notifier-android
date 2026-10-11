@@ -17,7 +17,7 @@ object WorkScheduler {
      * Schedules periodic background polling using WorkManager.
      * Enforces minimum 20 minutes (1200 seconds) to prevent server overload.
      */
-    fun schedule(context: Context, intervalMinutes: Int) {
+    fun schedule(context: Context, intervalMinutes: Int, forceUpdate: Boolean = false) {
         val validatedInterval = if (intervalMinutes < SecurePreferencesManager.MIN_POLL_INTERVAL_MINUTES) {
             SecurePreferencesManager.MIN_POLL_INTERVAL_MINUTES
         } else {
@@ -37,9 +37,11 @@ object WorkScheduler {
             .setConstraints(constraints)
             .build()
 
+        val policy = if (forceUpdate) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP
+
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             UNIQUE_WORK_NAME,
-            ExistingPeriodicWorkPolicy.UPDATE,
+            policy,
             periodicWorkRequest
         )
     }

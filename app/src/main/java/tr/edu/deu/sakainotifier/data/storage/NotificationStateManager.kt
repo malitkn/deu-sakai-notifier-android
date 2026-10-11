@@ -17,7 +17,7 @@ class NotificationStateManager(context: Context) {
         private const val KEY_SEEN_IDS = "key_seen_notification_ids"
         private const val KEY_SEEN_HASHES = "key_seen_content_hashes"
         private const val KEY_IS_FIRST_BOOT = "key_is_first_boot"
-        private const val KEY_RECENT_NOTIFICATIONS = "key_recent_notifications_json"
+        const val KEY_RECENT_NOTIFICATIONS = "key_recent_notifications_json"
     }
 
     val isFirstBoot: Boolean
@@ -93,15 +93,15 @@ class NotificationStateManager(context: Context) {
                 seenHashes.add(notif.contentHash)
             }
 
+            // Mark state as initialized
             prefs.edit()
                 .putStringSet(KEY_SEEN_IDS, seenIds)
                 .putStringSet(KEY_SEEN_HASHES, seenHashes)
                 .putBoolean(KEY_IS_FIRST_BOOT, false)
                 .apply()
 
-            saveRecentNotifications(notifications.take(20))
-
             // Initial installation / account switch: notify user about active announcements (up to 5)
+            // markProcessed will handle saving with strict deduplication
             return notifications.take(5)
         }
 
@@ -132,15 +132,20 @@ class NotificationStateManager(context: Context) {
             .putStringSet(KEY_SEEN_HASHES, seenHashes)
             .apply()
 
-        // Prepend new notifications to recent cache
-        val currentRecent = getRecentNotifications().toMutableList()
-        currentRecent.addAll(0, notifications)
-        saveRecentNotifications(currentRecent.take(30))
+        // Prepend new notifications to recent cache with strict deduplication
+        val currentRecent = getRecentNotifications()
+        val combined = (notifications + currentRecent).distinctBy {
+            if (it.sakaiId.isNotBlank()) it.sakaiId else it.contentHash
+        }
+        saveRecentNotifications(combined.take(30))
     }
 
     private fun saveRecentNotifications(items: List<SakaiNotification>) {
+        val distinctItems = items.distinctBy {
+            if (it.sakaiId.isNotBlank()) it.sakaiId else it.contentHash
+        }
         val array = JSONArray()
-        for (item in items) {
+        for (item in distinctItems) {
             val obj = JSONObject()
             obj.put("id", item.sakaiId)
             obj.put("hash", item.contentHash)
@@ -177,6 +182,16 @@ class NotificationStateManager(context: Context) {
         } catch (e: Exception) {
             e.printStackTrace()
         }
-        return list
+        return list.distinctBy {
+            if (it.sakaiId.isNotBlank()) it.sakaiId else it.contentHash
+        }
+    }
+
+    fun registerChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
     }
 }
