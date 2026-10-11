@@ -3,9 +3,13 @@ package tr.edu.deu.sakainotifier.ui
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.widget.Toast
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -100,9 +104,9 @@ fun MainScreen(
 
     val currentAppVersion = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.3"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.4"
         } catch (_: Exception) {
-            "1.2.3"
+            "1.2.4"
         }
     }
 
@@ -118,6 +122,42 @@ fun MainScreen(
         )
     }
     var isBatteryGuideDismissed by remember { mutableStateOf(false) }
+
+    // App Hibernation / Unused App Restrictions State (Android 11+ / API 30+)
+    var isHibernationWhitelisted by remember {
+        mutableStateOf(
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    context.packageManager.isAutoRevokeWhitelisted
+                } catch (_: Exception) {
+                    false
+                }
+            } else {
+                false
+            }
+        )
+    }
+    var isHibernationGuideDismissed by remember { mutableStateOf(false) }
+
+    // Re-check system background & hibernation permissions when returning from Settings
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                isBatteryOptimizationIgnored = pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    try {
+                        isHibernationWhitelisted = context.packageManager.isAutoRevokeWhitelisted
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     // Check for app updates on launch
     LaunchedEffect(Unit) {
@@ -455,6 +495,77 @@ fun MainScreen(
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text("Pil Ayarını Aç ⚙️", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // App Hibernation / Unused App Restrictions Warning Card (Android 11+)
+            if (!isHibernationWhitelisted && !isHibernationGuideDismissed) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFEFF6FF)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFF3B82F6).copy(alpha = 0.7f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("⏳", fontSize = 16.sp)
+                                    Text(
+                                        text = "Uygulama Etkinliği Duraklatma Uyarısı",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF1D4ED8)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { isHibernationGuideDismissed = true },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Text("✕", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                            Text(
+                                text = "Android sistemi, uzun süre açılmayan uygulamaların bildirim izinlerini ve arka plan kontrollerini otomatik durdurur. Bildirimlerin kesilmemesi için uygulama ayarlarındaki 'Kullanılmıyorsa etkinliği duraklat' (veya 'İzinleri kaldır') seçeneğini kapatmanız önerilir.",
+                                fontSize = 12.sp,
+                                color = Color.DarkGray,
+                                lineHeight = 16.sp
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                data = Uri.fromParts("package", context.packageName, null)
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Ayarlar açılamadı: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Uygulama Ayarlarını Aç ⚙️", fontSize = 12.sp)
                                 }
                             }
                         }
@@ -1280,58 +1391,79 @@ fun MainScreen(
                             )
                         }
 
-                        OutlinedButton(
-                            onClick = {
-                                if (!isCheckingUpdateManual) {
-                                    isCheckingUpdateManual = true
-                                    coroutineScope.launch {
-                                        try {
-                                            val update = UpdateChecker.checkForUpdates(currentAppVersion)
-                                            if (update != null && update.hasUpdate) {
-                                                appUpdateInfo = update
-                                                updateBannerDismissed = false
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.fromParts("package", context.packageName, null)
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Ayarlar açılamadı: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                Text("Ayarlar ⚙️", fontSize = 12.sp)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    if (!isCheckingUpdateManual) {
+                                        isCheckingUpdateManual = true
+                                        coroutineScope.launch {
+                                            try {
+                                                val update = UpdateChecker.checkForUpdates(currentAppVersion)
+                                                if (update != null && update.hasUpdate) {
+                                                    appUpdateInfo = update
+                                                    updateBannerDismissed = false
+                                                    Toast.makeText(
+                                                        context,
+                                                        "🚀 Yeni sürüm mevcut: ${update.latestVersion}!",
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                } else if (update != null) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "✅ Uygulamanız en güncel sürümde (v$currentAppVersion).",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                } else {
+                                                    Toast.makeText(
+                                                        context,
+                                                        "⚠️ Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            } catch (e: Exception) {
                                                 Toast.makeText(
                                                     context,
-                                                    "🚀 Yeni sürüm mevcut: ${update.latestVersion}!",
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            } else if (update != null) {
-                                                Toast.makeText(
-                                                    context,
-                                                    "✅ Uygulamanız en güncel sürümde (v$currentAppVersion).",
+                                                    "Hata: ${e.message}",
                                                     Toast.LENGTH_SHORT
                                                 ).show()
-                                            } else {
-                                                Toast.makeText(
-                                                    context,
-                                                    "⚠️ Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.",
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                            } finally {
+                                                isCheckingUpdateManual = false
                                             }
-                                        } catch (e: Exception) {
-                                            Toast.makeText(
-                                                context,
-                                                "Hata: ${e.message}",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        } finally {
-                                            isCheckingUpdateManual = false
                                         }
                                     }
+                                },
+                                enabled = !isCheckingUpdateManual,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                if (isCheckingUpdateManual) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Denetleniyor...", fontSize = 12.sp)
+                                } else {
+                                    Text("Güncellemeleri Denetle 🔄", fontSize = 12.sp)
                                 }
-                            },
-                            enabled = !isCheckingUpdateManual,
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                        ) {
-                            if (isCheckingUpdateManual) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Denetleniyor...", fontSize = 12.sp)
-                            } else {
-                                Text("Güncellemeleri Denetle 🔄", fontSize = 12.sp)
                             }
                         }
                     }
