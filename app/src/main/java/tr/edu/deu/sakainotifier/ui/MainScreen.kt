@@ -33,7 +33,7 @@ import tr.edu.deu.sakainotifier.data.model.SakaiNotification
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
 import tr.edu.deu.sakainotifier.notification.NotificationHelper
-import tr.edu.deu.sakainotifier.ui.theme.DeuNavy
+import tr.edu.deu.sakainotifier.ui.theme.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import tr.edu.deu.sakainotifier.worker.WorkScheduler
 
@@ -417,13 +417,14 @@ fun MainScreen(
             manualCheckResultText?.let { bannerText ->
                 item {
                     Surface(
-                        color = if (manualCheckSuccess) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                        color = if (manualCheckSuccess) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer,
                         shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, if (manualCheckSuccess) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.error.copy(alpha = 0.5f)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
                             text = bannerText,
-                            color = if (manualCheckSuccess) DeuSuccess else MaterialTheme.colorScheme.error,
+                            color = if (manualCheckSuccess) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onErrorContainer,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Medium,
                             modifier = Modifier.padding(12.dp)
