@@ -95,8 +95,8 @@ deu-sakai-notifier-android/
 - [x] 1.3: `SakaiApiClient.kt` ile `/api/users/me/notifications` veri çekme akışını kodla
 
 ### Sprint 2: Secure Storage & Deduplication State (EncryptedPreferences)
-- [ ] 2.1: `SecurePreferencesManager.kt` ile kullanıcı adı, şifre ve yoklama aralığını Android KeyStore ile şifrelenmiş saklama katmanını kodla
-- [ ] 2.2: `NotificationStateManager.kt` ile görülen bildirim kimliklerini ve "Silent Bootstrap" ilk başlatma mantığını kodla
+- [x] 2.1: `SecurePreferencesManager.kt` ile kullanıcı adı, şifre ve yoklama aralığını Android KeyStore ile şifrelenmiş saklama katmanını kodla
+- [x] 2.2: `NotificationStateManager.kt` ile görülen bildirim kimliklerini ve "Silent Bootstrap" ilk başlatma mantığını kodla
 
 ### Sprint 3: Background Worker & Native Notification Manager (WorkManager)
 - [ ] 3.1: `NotificationHelper.kt` ile Android sistem bildirim kanalı (`NotificationChannel`) ve push uyarılarını kodla
