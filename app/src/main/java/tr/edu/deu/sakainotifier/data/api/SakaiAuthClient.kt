@@ -29,6 +29,13 @@ sealed class AuthResult {
 
 object SakaiUsernameUtils {
     /**
+     * Extracts the short username (e.g. "2024123456") from either student number or full email.
+     */
+    fun shortUsername(input: String): String {
+        return input.substringBefore("@").trim()
+    }
+
+    /**
      * Automatically appends @ogr.deu.edu.tr if the student enters only their student ID number.
      * Preserves existing domain if user explicitly typed @ogr.deu.edu.tr or @deu.edu.tr.
      */
