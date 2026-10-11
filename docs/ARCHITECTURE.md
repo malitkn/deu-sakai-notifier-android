@@ -85,9 +85,9 @@ deu-sakai-notifier-android/
 ## 4. Sprint ve Görev Planı (Checklist)
 
 ### Sprint 0: Android Project Scaffolding & Architecture Setup
-- [ ] 0.1: Git deposunu ve Android `.gitignore` dosyasını oluştur
-- [ ] 0.2: Protokol belgelerini (`AGENTS.md`, `GOVERNANCE.md`, `SKILL-CATALOG.md`, `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`) tanımla
-- [ ] 0.3: Gradle projesini (`settings.gradle.kts`, `build.gradle.kts`, `app/build.gradle.kts`, `gradle-wrapper`) yapılandır
+- [x] 0.1: Git deposunu ve Android `.gitignore` dosyasını oluştur
+- [x] 0.2: Protokol belgelerini (`AGENTS.md`, `GOVERNANCE.md`, `SKILL-CATALOG.md`, `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`) tanımla
+- [x] 0.3: Gradle projesini (`settings.gradle.kts`, `build.gradle.kts`, `app/build.gradle.kts`, `gradle-wrapper`) yapılandır
 
 ### Sprint 1: Sakai HTTP & Authentication Client (OkHttp)
 - [ ] 1.1: `SakaiNotification` veri modellerini ve JSON ayrıştırıcıyı (`SakaiNotification.kt`, `SakaiParser.kt`) oluştur
