@@ -50,11 +50,8 @@ chmod +x gradlew
 
 ---
 
-## 📜 Yönetişim ve Protokoller
+## 📜 Belgeler ve Şartname
 
-* [AGENTS.md](AGENTS.md) — Kod ajanı katı çalışma kuralları
-* [GOVERNANCE.md](GOVERNANCE.md) — Mobil güvenlik ve revizyon protokolü
-* [SKILL-CATALOG.md](SKILL-CATALOG.md) — Kategori bazlı mobil ve entegrasyon kuralları
 * [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — Birincil mimari şartname ve sprint planı
 * [docs/DECISIONS.md](docs/DECISIONS.md) — Mimari Karar Kayıtları (ADR)
 * [docs/SPEC.md](docs/SPEC.md) — Doğrulanmış DEU Sakai API uç nokta sözleşmesi

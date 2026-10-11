@@ -53,3 +53,11 @@ google-services.json
 # OS specific
 .DS_Store
 Thumbs.db
+
+# AI & Agent Protocols
+AGENTS.md
+GOVERNANCE.md
+SKILL-CATALOG.md
+*PROTOCOL*.md
+*protocol*.md
+.gemini/

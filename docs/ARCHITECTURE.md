@@ -25,9 +25,6 @@ DEU Sakai Notifier Android; Dokuz Eylül Üniversitesi öğrencilerinin kendi te
 
 ```text
 deu-sakai-notifier-android/
-├── AGENTS.md
-├── GOVERNANCE.md
-├── SKILL-CATALOG.md
 ├── README.md
 ├── build.gradle.kts
 ├── settings.gradle.kts
@@ -86,7 +83,7 @@ deu-sakai-notifier-android/
 
 ### Sprint 0: Android Project Scaffolding & Architecture Setup
 - [x] 0.1: Git deposunu ve Android `.gitignore` dosyasını oluştur
-- [x] 0.2: Protokol belgelerini (`AGENTS.md`, `GOVERNANCE.md`, `SKILL-CATALOG.md`, `docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`) tanımla
+- [x] 0.2: Teknik dokümantasyon belgelerini (`docs/DECISIONS.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`) tanımla
 - [x] 0.3: Gradle projesini (`settings.gradle.kts`, `build.gradle.kts`, `app/build.gradle.kts`, `gradle-wrapper`) yapılandır
 
 ### Sprint 1: Sakai HTTP & Authentication Client (OkHttp)
