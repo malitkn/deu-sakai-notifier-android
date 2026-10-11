@@ -166,7 +166,7 @@ object NotificationHelper {
                 .setBigContentTitle(summaryTitle)
 
             for (email in emails.take(5)) {
-                val sender = email.siteTitle.ifBlank { "Öğrenci Maili" }
+                val sender = email.siteTitle?.ifBlank { "Öğrenci Maili" } ?: "Öğrenci Maili"
                 inboxStyle.addLine("[$sender] ${email.title}")
             }
 
@@ -187,7 +187,8 @@ object NotificationHelper {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
 
-            val summaryBody = "${emails.size} yeni e-posta alındı. İlk: [${emails.first().siteTitle}] ${emails.first().title}"
+            val firstSender = emails.first().siteTitle?.ifBlank { "Öğrenci Maili" } ?: "Öğrenci Maili"
+            val summaryBody = "${emails.size} yeni e-posta alındı. İlk: [$firstSender] ${emails.first().title}"
 
             val summaryBuilder = NotificationCompat.Builder(context, CHANNEL_ID_MAIL)
                 .setSmallIcon(android.R.drawable.ic_dialog_email)
