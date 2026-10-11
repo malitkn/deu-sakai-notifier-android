@@ -26,6 +26,19 @@ Herhangi bir mağazaya ihtiyaç duymadan doğrudan APK olarak kurulabilir:
 
 ---
 
+### ⚠️ Kesintisiz Bildirim İçin Önemli Cihaz Ayarları
+
+Android'in (özellikle Xiaomi, Samsung ve Huawei) arka planda çalışan servisleri uyutmasını engellemek için kurulum sonrası şu ayarları yapmanız önerilir:
+
+* 🔋 **Pil Tasarrufu (Kısıtlama Yok):**  
+  Uygulama simgesine basılı tutun > **Uygulama Bilgisi** > **Pil / Pil Tasarrufu** bölümünden **"Kısıtlama Yok" (Unrestricted)** seçeneğini işaretleyin. *(Uygulama açılışındaki sarı uyarı kartında yer alan "Pil Ayarını Aç ⚙️" butonuna basarak da bu ekrana doğrudan ulaşabilirsiniz.)*
+* ⏸️ **Kullanılmadığında Etkinliği Duraklat:**  
+  Yine Uygulama Bilgisi ekranında bulunan **"Kullanılmadığında uygulama etkinliğini duraklat"** (veya *"Kullanılmıyorsa izinleri kaldır ve yer aç"*) seçeneğini **KAPATIN**. Böylece uygulamayı günlerce açmasanız dahi arka plan kontrolü durmaz.
+* 🚀 **Otomatik Başlatma (Xiaomi / MIUI / HyperOS):**  
+  Xiaomi cihaz kullanıyorsanız Uygulama Bilgisi ekranındaki **"Otomatik Başlatma" (Autostart)** iznini aktif edin.
+
+---
+
 ## 🛠️ Kendiniz Derlemek İsterseniz
 
 ```bash
