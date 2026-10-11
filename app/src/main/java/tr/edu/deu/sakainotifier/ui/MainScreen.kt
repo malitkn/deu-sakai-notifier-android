@@ -44,6 +44,12 @@ import tr.edu.deu.sakainotifier.ui.theme.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import tr.edu.deu.sakainotifier.worker.WorkScheduler
 
+enum class NotificationTypeFilter(val label: String) {
+    ALL("Tümü"),
+    SAKAI("🎓 Sakai"),
+    MAIL("✉️ E-posta")
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MainScreen(
@@ -84,17 +90,19 @@ fun MainScreen(
 
     // Filter & Clear state
     var selectedAccountFilter by remember { mutableStateOf<String?>(null) }
+    var selectedTypeFilter by remember { mutableStateOf(NotificationTypeFilter.ALL) }
     var showClearDialog by remember { mutableStateOf(false) }
 
     // In-App Update state
     var appUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
     var updateBannerDismissed by remember { mutableStateOf(false) }
+    var isCheckingUpdateManual by remember { mutableStateOf(false) }
 
     val currentAppVersion = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.2"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.3"
         } catch (_: Exception) {
-            "1.2.2"
+            "1.2.3"
         }
     }
 
@@ -132,13 +140,16 @@ fun MainScreen(
         }
     }
 
-    val displayedNotifications = remember(recentNotifications, selectedAccountFilter) {
-        if (selectedAccountFilter == null) {
-            recentNotifications
-        } else {
-            recentNotifications.filter {
-                it.accountUsername?.substringBefore("@").equals(selectedAccountFilter, ignoreCase = true)
+    val displayedNotifications = remember(recentNotifications, selectedAccountFilter, selectedTypeFilter) {
+        recentNotifications.filter { notif ->
+            val matchesAccount = selectedAccountFilter == null ||
+                notif.accountUsername?.substringBefore("@").equals(selectedAccountFilter, ignoreCase = true)
+            val matchesType = when (selectedTypeFilter) {
+                NotificationTypeFilter.ALL -> true
+                NotificationTypeFilter.SAKAI -> !notif.isEmail
+                NotificationTypeFilter.MAIL -> notif.isEmail
             }
+            matchesAccount && matchesType
         }
     }
 
@@ -958,6 +969,8 @@ fun MainScreen(
                             Text(
                                 text = if (displayedNotifications.isNotEmpty())
                                     "${displayedNotifications.size} bildirim listeleniyor"
+                                else if (recentNotifications.isNotEmpty())
+                                    "Filtreye uygun bildirim yok"
                                 else
                                     "Henüz bildirim yok",
                                 fontSize = 12.sp,
@@ -1089,27 +1102,94 @@ fun MainScreen(
                         }
                     }
 
-                    // Account Filter Chips (if more than 1 account is registered)
-                    if (registeredAccounts.size > 1 && recentNotifications.isNotEmpty()) {
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            FilterChip(
-                                selected = selectedAccountFilter == null,
-                                onClick = { selectedAccountFilter = null },
-                                label = { Text("Tümü (${recentNotifications.size})", fontSize = 12.sp) }
-                            )
-                            registeredAccounts.forEach { acc ->
-                                val count = recentNotifications.count {
-                                    it.accountUsername?.substringBefore("@").equals(acc.shortUsername, ignoreCase = true)
+                    // Account & Type Filter Chips
+                    if (recentNotifications.isNotEmpty()) {
+                        val accountFiltered = remember(recentNotifications, selectedAccountFilter) {
+                            if (selectedAccountFilter == null) {
+                                recentNotifications
+                            } else {
+                                recentNotifications.filter {
+                                    it.accountUsername?.substringBefore("@").equals(selectedAccountFilter, ignoreCase = true)
                                 }
+                            }
+                        }
+                        val sakaiCount = remember(accountFiltered) { accountFiltered.count { !it.isEmail } }
+                        val mailCount = remember(accountFiltered) { accountFiltered.count { it.isEmail } }
+
+                        // 1. Account Filter Chips (if multiple accounts registered)
+                        if (registeredAccounts.size > 1) {
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = "Hesap Filtresi:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    FilterChip(
+                                        selected = selectedAccountFilter == null,
+                                        onClick = { selectedAccountFilter = null },
+                                        label = { Text("Tüm Hesaplar (${recentNotifications.size})", fontSize = 12.sp) }
+                                    )
+                                    registeredAccounts.forEach { acc ->
+                                        val count = recentNotifications.count {
+                                            it.accountUsername?.substringBefore("@").equals(acc.shortUsername, ignoreCase = true)
+                                        }
+                                        FilterChip(
+                                            selected = selectedAccountFilter == acc.shortUsername,
+                                            onClick = {
+                                                selectedAccountFilter = if (selectedAccountFilter == acc.shortUsername) null else acc.shortUsername
+                                            },
+                                            label = { Text("🎓 ${acc.shortUsername} ($count)", fontSize = 12.sp) }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. Notification Type Filter Chips (Tümü / 🎓 Sakai / ✉️ E-posta)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            if (registeredAccounts.size > 1) {
+                                Text(
+                                    text = "Tür Filtresi:",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                )
+                            }
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
                                 FilterChip(
-                                    selected = selectedAccountFilter == acc.shortUsername,
+                                    selected = selectedTypeFilter == NotificationTypeFilter.ALL,
+                                    onClick = { selectedTypeFilter = NotificationTypeFilter.ALL },
+                                    label = { Text("Tümü (${accountFiltered.size})", fontSize = 12.sp) }
+                                )
+                                FilterChip(
+                                    selected = selectedTypeFilter == NotificationTypeFilter.SAKAI,
                                     onClick = {
-                                        selectedAccountFilter = if (selectedAccountFilter == acc.shortUsername) null else acc.shortUsername
+                                        selectedTypeFilter = if (selectedTypeFilter == NotificationTypeFilter.SAKAI) {
+                                            NotificationTypeFilter.ALL
+                                        } else {
+                                            NotificationTypeFilter.SAKAI
+                                        }
                                     },
-                                    label = { Text("🎓 ${acc.shortUsername} ($count)", fontSize = 12.sp) }
+                                    label = { Text("🎓 Sakai Duyuruları ($sakaiCount)", fontSize = 12.sp) }
+                                )
+                                FilterChip(
+                                    selected = selectedTypeFilter == NotificationTypeFilter.MAIL,
+                                    onClick = {
+                                        selectedTypeFilter = if (selectedTypeFilter == NotificationTypeFilter.MAIL) {
+                                            NotificationTypeFilter.ALL
+                                        } else {
+                                            NotificationTypeFilter.MAIL
+                                        }
+                                    },
+                                    label = { Text("✉️ Öğrenci Mailleri ($mailCount)", fontSize = 12.sp) }
                                 )
                             }
                         }
@@ -1140,11 +1220,18 @@ fun MainScreen(
             // 5. Recent Notifications List
             if (displayedNotifications.isEmpty()) {
                 item {
+                    val emptyMsg = when {
+                        recentNotifications.isEmpty() ->
+                            "Henüz yakalanan bildirim yok. Sistem arka planda yeni duyuruları ve mailleri bekliyor."
+                        selectedTypeFilter == NotificationTypeFilter.MAIL ->
+                            "Seçilen kriterlere uygun öğrenci e-postası bulunmuyor."
+                        selectedTypeFilter == NotificationTypeFilter.SAKAI ->
+                            "Seçilen kriterlere uygun Sakai duyurusu bulunmuyor."
+                        else ->
+                            "Bu filtre için gösterilecek bildirim bulunmuyor."
+                    }
                     Text(
-                        text = if (recentNotifications.isEmpty())
-                            "Henüz yakalanan bildirim yok. Sistem arka planda yeni duyuruları bekliyor."
-                        else
-                            "Bu hesap için gösterilecek bildirim bulunmuyor.",
+                        text = emptyMsg,
                         fontSize = 13.sp,
                         color = Color.Gray,
                         modifier = Modifier.padding(vertical = 12.dp)
@@ -1160,6 +1247,96 @@ fun MainScreen(
                         context.startActivity(intent)
                     }
                 }
+            }
+
+            // 6. App Info & Manual Update Checker Footer
+            item {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                    ),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "DEU Sakai Notifier",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "Sürüm: v$currentAppVersion",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                if (!isCheckingUpdateManual) {
+                                    isCheckingUpdateManual = true
+                                    coroutineScope.launch {
+                                        try {
+                                            val update = UpdateChecker.checkForUpdates(currentAppVersion)
+                                            if (update != null && update.hasUpdate) {
+                                                appUpdateInfo = update
+                                                updateBannerDismissed = false
+                                                Toast.makeText(
+                                                    context,
+                                                    "🚀 Yeni sürüm mevcut: ${update.latestVersion}!",
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            } else if (update != null) {
+                                                Toast.makeText(
+                                                    context,
+                                                    "✅ Uygulamanız en güncel sürümde (v$currentAppVersion).",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            } else {
+                                                Toast.makeText(
+                                                    context,
+                                                    "⚠️ Güncelleme sunucusuna ulaşılamadı. İnternet bağlantınızı kontrol edin.",
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(
+                                                context,
+                                                "Hata: ${e.message}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        } finally {
+                                            isCheckingUpdateManual = false
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !isCheckingUpdateManual,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            if (isCheckingUpdateManual) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Denetleniyor...", fontSize = 12.sp)
+                            } else {
+                                Text("Güncellemeleri Denetle 🔄", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
