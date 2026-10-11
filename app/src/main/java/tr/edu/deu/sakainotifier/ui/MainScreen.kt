@@ -59,6 +59,8 @@ fun MainScreen(
     var testResultSuccess by remember { mutableStateOf(false) }
 
     var isManualChecking by remember { mutableStateOf(false) }
+    var manualCheckResultText by remember { mutableStateOf<String?>(null) }
+    var manualCheckSuccess by remember { mutableStateOf(false) }
     var recentNotifications by remember { mutableStateOf(stateManager.getRecentNotifications()) }
 
     Scaffold(
@@ -361,13 +363,18 @@ fun MainScreen(
                                                 NotificationHelper.showNotification(context, notif)
                                             }
                                             stateManager.markProcessed(newOnes)
-                                            Toast.makeText(context, "${newOnes.size} yeni duyuru bulundu!", Toast.LENGTH_SHORT).show()
+                                            manualCheckResultText = "✅ ${newOnes.size} yeni duyuru bulundu ve listelendi!"
+                                            manualCheckSuccess = true
                                         } else {
-                                            Toast.makeText(context, "Yeni duyuru yok. Tüm duyurular güncel.", Toast.LENGTH_SHORT).show()
+                                            manualCheckResultText = "✅ Kontrol başarılı. Yeni duyuru yok, tüm bildirimleriniz güncel."
+                                            manualCheckSuccess = true
                                         }
                                         recentNotifications = stateManager.getRecentNotifications()
                                     } else {
-                                        Toast.makeText(context, "Sakai bağlantı hatası: ${fetchRes.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                        val errorMsg = fetchRes.exceptionOrNull()?.message ?: "Bağlantı hatası oluştu."
+                                        manualCheckResultText = "❌ $errorMsg"
+                                        manualCheckSuccess = false
+                                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                                     }
                                 } finally {
                                     isManualChecking = false
@@ -386,6 +393,25 @@ fun MainScreen(
                         } else {
                             Text("Şimdi Kontrol Et 🔄", fontSize = 12.sp)
                         }
+                    }
+                }
+            }
+
+            // Banner displaying manual check result
+            manualCheckResultText?.let { bannerText ->
+                item {
+                    Surface(
+                        color = if (manualCheckSuccess) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = bannerText,
+                            color = if (manualCheckSuccess) DeuSuccess else MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            modifier = Modifier.padding(12.dp)
+                        )
                     }
                 }
             }

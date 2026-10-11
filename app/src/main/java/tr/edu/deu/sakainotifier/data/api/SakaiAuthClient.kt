@@ -12,10 +12,11 @@ data class SakaiSession(
     val sakaiAffinity: String? = null
 ) {
     fun toCookieHeader(): String {
-        val parts = mutableListOf("SAKAI2SESSIONID=$sakai2SessionId")
+        val parts = mutableListOf<String>()
         if (!sakaiAffinity.isNullOrBlank()) {
             parts.add("SAKAI_AFFINITY=$sakaiAffinity")
         }
+        parts.add("SAKAI2SESSIONID=$sakai2SessionId")
         return parts.joinToString("; ")
     }
 }
@@ -44,8 +45,8 @@ object SakaiUsernameUtils {
 
 class SakaiAuthClient(
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .followRedirects(true)
-        .followSslRedirects(true)
+        .followRedirects(false) // Must not follow 302 redirect so authenticated session cookie is not discarded for guest session
+        .followSslRedirects(false)
         .build()
 ) {
     companion object {
@@ -82,15 +83,22 @@ class SakaiAuthClient(
                 var sakai2Session: String? = null
                 var sakaiAffinity: String? = null
 
-                // Extract cookies from Set-Cookie headers
-                val cookieHeaders = response.headers("Set-Cookie")
-                for (header in cookieHeaders) {
-                    val cookiePart = header.substringBefore(";").trim()
-                    if (cookiePart.startsWith("SAKAI2SESSIONID=")) {
-                        sakai2Session = cookiePart.substringAfter("SAKAI2SESSIONID=")
-                    } else if (cookiePart.startsWith("SAKAI_AFFINITY=")) {
-                        sakaiAffinity = cookiePart.substringAfter("SAKAI_AFFINITY=")
+                // Extract cookies from Set-Cookie headers of this response and any prior response
+                val allResponses = listOfNotNull(response, response.priorResponse)
+                for (resp in allResponses) {
+                    val cookieHeaders = resp.headers("Set-Cookie")
+                    for (header in cookieHeaders) {
+                        val cookiePart = header.substringBefore(";").trim()
+                        if (cookiePart.startsWith("SAKAI2SESSIONID=")) {
+                            sakai2Session = cookiePart.substringAfter("SAKAI2SESSIONID=")
+                        } else if (cookiePart.startsWith("SAKAI_AFFINITY=")) {
+                            sakaiAffinity = cookiePart.substringAfter("SAKAI_AFFINITY=")
+                        }
                     }
+                }
+
+                if (response.code == 200 && (bodyText.contains("xlogin") || bodyText.contains("Şifrenizi mi unuttunuz"))) {
+                    return@withContext AuthResult.InvalidCredentials("Giriş başarısız: Kullanıcı adı ya da şifreniz hatalı.")
                 }
 
                 if (sakai2Session.isNullOrBlank()) {

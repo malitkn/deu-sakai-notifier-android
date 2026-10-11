@@ -60,16 +60,20 @@ class SakaiApiClient(
                 .build()
 
             httpClient.newCall(request).execute().use { response ->
+                val contentType = response.header("Content-Type").orEmpty()
+                val rawBody = response.body?.string().orEmpty()
+
                 // Check if session has expired or redirected to login
                 val isExpired = response.code == 401 ||
                         response.code == 403 ||
+                        response.code in 300..399 ||
                         response.request.url.encodedPath.contains("xlogin") ||
-                        (response.header("Content-Type")?.contains("text/html") == true && response.body?.string().orEmpty().contains("xlogin"))
+                        (contentType.contains("text/html") && (rawBody.contains("xlogin") || rawBody.contains("Giriş")))
 
                 if (isExpired) {
                     // Re-authenticate once and retry
                     currentSession = null
-                    when (val reAuth = authClient.authenticate(username, password)) {
+                    when (val reAuth = authClient.authenticate(normalizedUser, password)) {
                         is AuthResult.Success -> {
                             currentSession = reAuth.session
                             val retryRequest = request.newBuilder()
@@ -77,11 +81,11 @@ class SakaiApiClient(
                                 .build()
 
                             httpClient.newCall(retryRequest).execute().use { retryResp ->
+                                val retryRawBody = retryResp.body?.string().orEmpty()
                                 if (!retryResp.isSuccessful) {
-                                    return@withContext Result.failure(Exception("Bildirimler alınamadı (HTTP ${retryResp.code})."))
+                                    return@withContext Result.failure(Exception("Bildirimler alınamadı (HTTP ${retryResp.code}). Detay: ${retryRawBody.take(120)}"))
                                 }
-                                val body = retryResp.body?.string().orEmpty()
-                                return@withContext Result.success(SakaiParser.parseNotifications(body))
+                                return@withContext Result.success(SakaiParser.parseNotifications(retryRawBody))
                             }
                         }
                         is AuthResult.InvalidCredentials -> return@withContext Result.failure(Exception(reAuth.message))
@@ -90,11 +94,10 @@ class SakaiApiClient(
                 }
 
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(Exception("Bildirimler alınamadı (HTTP ${response.code})."))
+                    return@withContext Result.failure(Exception("Bildirimler alınamadı (HTTP ${response.code}). Detay: ${rawBody.take(120)}"))
                 }
 
-                val body = response.body?.string().orEmpty()
-                return@withContext Result.success(SakaiParser.parseNotifications(body))
+                return@withContext Result.success(SakaiParser.parseNotifications(rawBody))
             }
         } catch (e: IOException) {
             return@withContext Result.failure(Exception("Ağ bağlantı hatası: ${e.localizedMessage ?: e.message}", e))
