@@ -367,22 +367,23 @@ fun MainScreen(
                                         val allList = fetchRes.getOrDefault(emptyList())
                                         val wasFirstBoot = stateManager.isFirstBoot
                                         val newOnes = stateManager.filterNewNotifications(allList)
-                                        if (wasFirstBoot) {
-                                            if (allList.isNotEmpty()) {
-                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Mevcut ${allList.size} duyurunuz listelendi; bundan sonraki yeni duyurularda anlık bildirim alacaksınız."
-                                            } else {
-                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Sakai'de henüz duyurunuz bulunmuyor."
-                                            }
-                                            manualCheckSuccess = true
-                                        } else if (newOnes.isNotEmpty()) {
+                                        if (newOnes.isNotEmpty()) {
                                             for (notif in newOnes) {
                                                 NotificationHelper.showNotification(context, notif)
                                             }
                                             stateManager.markProcessed(newOnes)
-                                            manualCheckResultText = "✅ ${newOnes.size} yeni duyuru bulundu ve listelendi!"
+                                            if (wasFirstBoot) {
+                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Mevcut ${newOnes.size} duyurunuz için bildirim gönderildi ve listelendi!"
+                                            } else {
+                                                manualCheckResultText = "✅ ${newOnes.size} yeni duyuru bulundu ve bildirildi!"
+                                            }
                                             manualCheckSuccess = true
                                         } else {
-                                            manualCheckResultText = "✅ Kontrol başarılı. Yeni duyuru yok, tüm bildirimleriniz güncel."
+                                            if (wasFirstBoot) {
+                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Sakai'de henüz duyurunuz bulunmuyor."
+                                            } else {
+                                                manualCheckResultText = "✅ Kontrol başarılı. Yeni duyuru yok, tüm bildirimleriniz güncel."
+                                            }
                                             manualCheckSuccess = true
                                         }
                                         recentNotifications = stateManager.getRecentNotifications()
@@ -511,7 +512,7 @@ fun NotificationItemCard(
             ) {
                 notif.publishedAt?.let { dateStr ->
                     Text(
-                        text = "📅 $dateStr",
+                        text = "📅 ${SakaiNotification.formatPublishedDate(dateStr) ?: dateStr}",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
                     )

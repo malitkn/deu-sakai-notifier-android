@@ -85,8 +85,24 @@ class NotificationStateManager(context: Context) {
      */
     fun filterNewNotifications(notifications: List<SakaiNotification>): List<SakaiNotification> {
         if (isFirstBoot) {
-            performSilentBootstrap(notifications)
-            return emptyList()
+            val seenIds = getSeenIds()
+            val seenHashes = getSeenHashes()
+
+            for (notif in notifications) {
+                seenIds.add(notif.sakaiId)
+                seenHashes.add(notif.contentHash)
+            }
+
+            prefs.edit()
+                .putStringSet(KEY_SEEN_IDS, seenIds)
+                .putStringSet(KEY_SEEN_HASHES, seenHashes)
+                .putBoolean(KEY_IS_FIRST_BOOT, false)
+                .apply()
+
+            saveRecentNotifications(notifications.take(20))
+
+            // Initial installation / account switch: notify user about active announcements (up to 5)
+            return notifications.take(5)
         }
 
         val seenIds = getSeenIds()

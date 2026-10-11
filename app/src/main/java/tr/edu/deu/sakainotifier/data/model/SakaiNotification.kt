@@ -2,6 +2,10 @@ package tr.edu.deu.sakainotifier.data.model
 
 import org.json.JSONObject
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Resilient data model representing a DEU Sakai notification.
@@ -66,13 +70,19 @@ data class SakaiNotification(
                 else -> null
             }?.takeIf { it.isNotBlank() }
 
-            val publishedAt = when {
-                json.has("eventDate") -> json.optString("eventDate")
-                json.has("createdAt") -> json.optString("createdAt")
-                json.has("publishedDate") -> json.optString("publishedDate")
-                json.has("date") -> json.optString("date")
+            val rawDate = when {
+                json.has("formattedEventDate") -> json.opt("formattedEventDate")
+                json.has("formattedDate") -> json.opt("formattedDate")
+                json.has("displayDate") -> json.opt("displayDate")
+                json.has("eventDate") -> json.opt("eventDate")
+                json.has("createdAt") -> json.opt("createdAt")
+                json.has("publishedDate") -> json.opt("publishedDate")
+                json.has("date") -> json.opt("date")
+                json.has("dateTime") -> json.opt("dateTime")
                 else -> null
-            }?.takeIf { it.isNotBlank() }
+            }
+
+            val publishedAt = formatPublishedDate(rawDate)
 
             return SakaiNotification(
                 sakaiId = sakaiId,
@@ -84,6 +94,60 @@ data class SakaiNotification(
                 publishedAt = publishedAt?.trim(),
                 rawJson = rawString
             )
+        }
+
+        /**
+         * Normalizes epoch timestamps (float or integer, milliseconds or seconds)
+         * or ISO-8601 strings into a human-readable date string (e.g. "11.10.2026 17:07").
+         */
+        fun formatPublishedDate(rawVal: Any?): String? {
+            if (rawVal == null || rawVal == JSONObject.NULL) return null
+
+            val rawStr = rawVal.toString().trim()
+            if (rawStr.isEmpty() || rawStr.equals("null", ignoreCase = true)) return null
+
+            // Check if numeric (epoch timestamp)
+            val numericTs = rawStr.toDoubleOrNull()
+            if (numericTs != null && numericTs > 1e7) {
+                val millis = if (numericTs > 1e11) {
+                    numericTs.toLong()
+                } else {
+                    (numericTs * 1000).toLong()
+                }
+                return try {
+                    val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR"))
+                    sdf.timeZone = TimeZone.getTimeZone("GMT+3")
+                    sdf.format(Date(millis))
+                } catch (_: Exception) {
+                    rawStr
+                }
+            }
+
+            // Check ISO-8601 / standard SQL timestamp patterns
+            if (rawStr.contains("T") || (rawStr.length >= 19 && rawStr.getOrNull(4) == '-' && rawStr.getOrNull(7) == '-')) {
+                val patterns = arrayOf(
+                    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+                    "yyyy-MM-dd'T'HH:mm:ssXXX",
+                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                    "yyyy-MM-dd'T'HH:mm:ss",
+                    "yyyy-MM-dd HH:mm:ss"
+                )
+                for (pattern in patterns) {
+                    try {
+                        val parser = SimpleDateFormat(pattern, Locale.ROOT)
+                        val parsedDate = parser.parse(rawStr)
+                        if (parsedDate != null) {
+                            val outFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR"))
+                            outFormat.timeZone = TimeZone.getTimeZone("GMT+3")
+                            return outFormat.format(parsedDate)
+                        }
+                    } catch (_: Exception) {
+                        // try next pattern
+                    }
+                }
+            }
+
+            return rawStr
         }
 
         private fun sha256(input: String): String {
