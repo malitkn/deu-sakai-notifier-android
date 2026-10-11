@@ -6,14 +6,14 @@ plugins {
 
 android {
     namespace = "tr.edu.deu.sakainotifier"
-    compileSdk = 35
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "tr.edu.deu.sakainotifier"
         minSdk = 24
-        targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        targetSdk = 34
+        versionCode = 2
+        versionName = "1.0.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -27,6 +27,22 @@ android {
         setProperty("archivesBaseName", "deu-sakai-notifier-universal")
     }
 
+    signingConfigs {
+        create("release") {
+            val ksFile = file("release.keystore")
+            if (ksFile.exists()) {
+                storeFile = ksFile
+                storePassword = "deusakai2026password"
+                keyAlias = "deusakai"
+                keyPassword = "deusakai2026password"
+            } else {
+                initWith(getByName("debug"))
+            }
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -34,7 +50,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug") // Allows immediate distribution without keystore setup
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -52,6 +68,9 @@ android {
     }
 
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }

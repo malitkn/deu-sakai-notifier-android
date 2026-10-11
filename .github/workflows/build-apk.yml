@@ -32,6 +32,10 @@ jobs:
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
 
+      - name: Generate Release Keystore
+        run: |
+          keytool -genkey -v -keystore app/release.keystore -alias deusakai -keyalg RSA -keysize 2048 -validity 10000 -storepass deusakai2026password -keypass deusakai2026password -dname "CN=DEU Sakai Notifier, OU=Mobile, O=DEU, L=Izmir, ST=Izmir, C=TR"
+
       - name: Build Universal Release APK
         run: ./gradlew assembleRelease --stacktrace
 
