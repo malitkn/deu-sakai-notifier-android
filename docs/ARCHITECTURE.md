@@ -109,6 +109,6 @@ deu-sakai-notifier-android/
 - [x] 4.3: Son bildirimler listesi ve servis başlat/durdur toggle kontrolünü arayüze entegre et
 
 ### Sprint 5: Universal APK Build Pipeline & GitHub Actions Release CI
-- [ ] 5.1: `AndroidManifest.xml` izinlerini (`INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`) ve bileşenleri yapılandır
-- [ ] 5.2: Universal APK derleme yapılandırmasını (`app/build.gradle.kts`) tamamla
-- [ ] 5.3: `.github/workflows/build-apk.yml` GitHub Actions CI hattını ekle ve `README.md` dokümantasyonunu hazırla
+- [x] 5.1: `AndroidManifest.xml` izinlerini (`INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`) ve bileşenleri yapılandır
+- [x] 5.2: Universal APK derleme yapılandırmasını (`app/build.gradle.kts`) tamamla
+- [x] 5.3: `.github/workflows/build-apk.yml` GitHub Actions CI hattını ekle ve `README.md` dokümantasyonunu hazırla
