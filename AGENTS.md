@@ -81,7 +81,7 @@ Ajan her değişiklik sonrasında projenin teknik yığınına uygun doğrulama 
 | Sprint | Başlık | Durum |
 | :--- | :--- | :--- |
 | **Sprint 0** | [deu-sakai-notifier-android] Sprint 0: Android Project Scaffolding & Architecture Setup | Tamamlandı |
-| **Sprint 1** | [deu-sakai-notifier-android] Sprint 1: Sakai HTTP & Authentication Client (OkHttp) | Başlanmadı |
+| **Sprint 1** | [deu-sakai-notifier-android] Sprint 1: Sakai HTTP & Authentication Client (OkHttp) | Tamamlandı |
 | **Sprint 2** | [deu-sakai-notifier-android] Sprint 2: Secure Storage & Deduplication State (EncryptedPreferences) | Başlanmadı |
 | **Sprint 3** | [deu-sakai-notifier-android] Sprint 3: Background Worker & Native Notification Manager (WorkManager) | Başlanmadı |
 | **Sprint 4** | [deu-sakai-notifier-android] Sprint 4: Jetpack Compose User Interface & Configuration | Başlanmadı |

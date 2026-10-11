@@ -90,9 +90,9 @@ deu-sakai-notifier-android/
 - [x] 0.3: Gradle projesini (`settings.gradle.kts`, `build.gradle.kts`, `app/build.gradle.kts`, `gradle-wrapper`) yapılandır
 
 ### Sprint 1: Sakai HTTP & Authentication Client (OkHttp)
-- [ ] 1.1: `SakaiNotification` veri modellerini ve JSON ayrıştırıcıyı (`SakaiNotification.kt`, `SakaiParser.kt`) oluştur
-- [ ] 1.2: `SakaiAuthClient.kt` ile `POST /portal/xlogin` oturum açma, cookie yönetimi ve hata kontrolünü kodla
-- [ ] 1.3: `SakaiApiClient.kt` ile `/api/users/me/notifications` veri çekme akışını kodla
+- [x] 1.1: `SakaiNotification` veri modellerini ve JSON ayrıştırıcıyı (`SakaiNotification.kt`, `SakaiParser.kt`) oluştur
+- [x] 1.2: `SakaiAuthClient.kt` ile `POST /portal/xlogin` oturum açma, cookie yönetimi ve hata kontrolünü kodla
+- [x] 1.3: `SakaiApiClient.kt` ile `/api/users/me/notifications` veri çekme akışını kodla
 
 ### Sprint 2: Secure Storage & Deduplication State (EncryptedPreferences)
 - [ ] 2.1: `SecurePreferencesManager.kt` ile kullanıcı adı, şifre ve yoklama aralığını Android KeyStore ile şifrelenmiş saklama katmanını kodla
