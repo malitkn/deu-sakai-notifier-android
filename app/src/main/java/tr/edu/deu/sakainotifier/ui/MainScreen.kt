@@ -1,10 +1,12 @@
 package tr.edu.deu.sakainotifier.ui
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -33,6 +35,8 @@ import tr.edu.deu.sakainotifier.data.model.SakaiAccount
 import tr.edu.deu.sakainotifier.data.model.SakaiNotification
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
+import tr.edu.deu.sakainotifier.data.updater.AppUpdateInfo
+import tr.edu.deu.sakainotifier.data.updater.UpdateChecker
 import tr.edu.deu.sakainotifier.notification.NotificationHelper
 import tr.edu.deu.sakainotifier.ui.theme.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -68,6 +72,43 @@ fun MainScreen(
         mutableStateOf(stateManager.getAllRecentNotifications(securePrefs.getAccounts().map { it.username }))
     }
 
+    // Filter & Clear state
+    var selectedAccountFilter by remember { mutableStateOf<String?>(null) }
+    var showClearDialog by remember { mutableStateOf(false) }
+
+    // In-App Update state
+    var appUpdateInfo by remember { mutableStateOf<AppUpdateInfo?>(null) }
+    var updateBannerDismissed by remember { mutableStateOf(false) }
+
+    val currentAppVersion = remember {
+        try {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.0"
+        } catch (_: Exception) {
+            "1.1.0"
+        }
+    }
+
+    // Battery Optimization State (Xiaomi, Samsung background reliability)
+    var isBatteryOptimizationIgnored by remember {
+        mutableStateOf(
+            try {
+                val pm = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+            } catch (_: Exception) {
+                true
+            }
+        )
+    }
+    var isBatteryGuideDismissed by remember { mutableStateOf(false) }
+
+    // Check for app updates on launch
+    LaunchedEffect(Unit) {
+        val update = UpdateChecker.checkForUpdates(currentAppVersion)
+        if (update != null && update.hasUpdate) {
+            appUpdateInfo = update
+        }
+    }
+
     // Auto-refresh notifications list when background worker updates SharedPreferences
     DisposableEffect(Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -78,6 +119,16 @@ fun MainScreen(
         stateManager.registerChangeListener(listener)
         onDispose {
             stateManager.unregisterChangeListener(listener)
+        }
+    }
+
+    val displayedNotifications = remember(recentNotifications, selectedAccountFilter) {
+        if (selectedAccountFilter == null) {
+            recentNotifications
+        } else {
+            recentNotifications.filter {
+                it.accountUsername?.substringBefore("@").equals(selectedAccountFilter, ignoreCase = true)
+            }
         }
     }
 
@@ -92,7 +143,7 @@ fun MainScreen(
                             color = Color.White
                         )
                         Text(
-                            text = "Dokuz Eylül Üniversitesi LMS",
+                            text = "Dokuz Eylül Üniversitesi LMS v$currentAppVersion",
                             fontSize = 12.sp,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -111,6 +162,69 @@ fun MainScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // 0. In-App Update Alert Banner
+            if (appUpdateInfo != null && !updateBannerDismissed) {
+                item {
+                    val update = appUpdateInfo!!
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFE8F5E9)
+                        ),
+                        border = BorderStroke(1.2.dp, DeuSuccess.copy(alpha = 0.7f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("🚀", fontSize = 16.sp)
+                                    Text(
+                                        text = "Yeni Sürüm Mevcut (${update.latestVersion})",
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1B5E20),
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Text(
+                                    text = "Yeni özellikler ve iyileştirmeler için güncelleyin.",
+                                    fontSize = 12.sp,
+                                    color = Color.DarkGray
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(update.downloadUrl))
+                                        context.startActivity(intent)
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = DeuSuccess),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("İndir 📥", fontSize = 12.sp)
+                                }
+                                IconButton(
+                                    onClick = { updateBannerDismissed = true },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Text("✕", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 1. Service Status Card
             item {
                 Card(
@@ -160,6 +274,78 @@ fun MainScreen(
                                 }
                             }
                         )
+                    }
+                }
+            }
+
+            // Battery Optimization Warning Card (For Xiaomi, Samsung, HyperOS background reliability)
+            if (!isBatteryOptimizationIgnored && !isBatteryGuideDismissed) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFFFFF8E1)
+                        ),
+                        border = BorderStroke(1.dp, Color(0xFFFFB300).copy(alpha = 0.7f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("🔋", fontSize = 16.sp)
+                                    Text(
+                                        text = "Kesintisiz Arka Plan Uyarısı",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFFB78103)
+                                    )
+                                }
+                                IconButton(
+                                    onClick = { isBatteryGuideDismissed = true },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Text("✕", fontSize = 12.sp, color = Color.Gray)
+                                }
+                            }
+                            Text(
+                                text = "Xiaomi, Samsung vb. cihazlarda bildirimlerin uyku modunda durmaması için uygulamanın pil ayarını 'Kısıtlama Yok' (Unrestricted) yapmanız önerilir.",
+                                fontSize = 12.sp,
+                                color = Color.DarkGray,
+                                lineHeight = 16.sp
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        try {
+                                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                                data = Uri.parse("package:${context.packageName}")
+                                            }
+                                            context.startActivity(intent)
+                                        } catch (_: Exception) {
+                                            val fallbackIntent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                            context.startActivity(fallbackIntent)
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Pil Ayarını Aç ⚙️", fontSize = 12.sp)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -408,98 +594,147 @@ fun MainScreen(
                 }
             }
 
-            // 4. Recent Notifications Header & Manual Check
+            // 4. Recent Notifications Header, Filters & Actions
             item {
-                Row(
+                Column(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Column {
-                        Text(
-                            text = "Son Bildirimler",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                        Text(
-                            text = if (recentNotifications.isNotEmpty()) "${recentNotifications.size} bildirim listeleniyor" else "Henüz bildirim yok",
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
-                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Son Bildirimler",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Text(
+                                text = if (displayedNotifications.isNotEmpty())
+                                    "${displayedNotifications.size} bildirim listeleniyor"
+                                else
+                                    "Henüz bildirim yok",
+                                fontSize = 12.sp,
+                                color = Color.Gray
+                            )
+                        }
 
-                    OutlinedButton(
-                        onClick = {
-                            val currentAccs = registeredAccounts
-                            if (currentAccs.isEmpty()) {
-                                Toast.makeText(context, "Lütfen önce en az bir hesap kaydedin.", Toast.LENGTH_SHORT).show()
-                                return@OutlinedButton
-                            }
-
-                            isManualChecking = true
-                            manualCheckResultText = null
-                            coroutineScope.launch {
-                                try {
-                                    val summaries = mutableListOf<String>()
-                                    var totalNew = 0
-                                    var anyFail = false
-
-                                    for (acc in currentAccs) {
-                                        stateManager.checkAccountSwitch(acc.username)
-                                        val fetchRes = apiClient.fetchNotifications(acc.username, acc.password)
-                                        if (fetchRes.isSuccess) {
-                                            val allList = fetchRes.getOrDefault(emptyList())
-                                            val tagged = allList.map { it.copy(accountUsername = acc.username) }
-                                            val wasFirstBoot = stateManager.isFirstBoot
-                                            val newOnes = stateManager.filterNewNotifications(tagged)
-                                            if (newOnes.isNotEmpty()) {
-                                                for (notif in newOnes) {
-                                                    NotificationHelper.showNotification(context, notif, acc.username)
-                                                }
-                                                stateManager.markProcessed(newOnes)
-                                                totalNew += newOnes.size
-                                                summaries.add("${acc.shortUsername}: ${newOnes.size} yeni duyuru")
-                                            } else {
-                                                if (stateManager.getRecentNotifications().isEmpty() && tagged.isNotEmpty()) {
-                                                    stateManager.markProcessed(tagged.take(15))
-                                                }
-                                                summaries.add("${acc.shortUsername}: güncel")
-                                            }
-                                        } else {
-                                            anyFail = true
-                                            val err = fetchRes.exceptionOrNull()?.message?.take(50) ?: "Bağlantı hatası"
-                                            summaries.add("${acc.shortUsername}: ❌ $err")
-                                        }
-                                    }
-
-                                    recentNotifications = stateManager.getAllRecentNotifications(currentAccs.map { it.username })
-
-                                    if (totalNew > 0) {
-                                        manualCheckResultText = "✅ " + summaries.joinToString(" | ")
-                                        manualCheckSuccess = true
-                                    } else if (!anyFail) {
-                                        manualCheckResultText = "✅ Tüm hesaplar kontrol edildi. Yeni duyuru yok (${summaries.joinToString(", ")})."
-                                        manualCheckSuccess = true
-                                    } else {
-                                        manualCheckResultText = "⚠️ Sonuç: " + summaries.joinToString(" | ")
-                                        manualCheckSuccess = false
-                                    }
-                                } finally {
-                                    isManualChecking = false
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (recentNotifications.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = { showClearDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text("Temizle 🗑️", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
                                 }
                             }
-                        },
-                        enabled = !isManualChecking
-                    ) {
-                        if (isManualChecking) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(14.dp),
-                                strokeWidth = 2.dp
+
+                            OutlinedButton(
+                                onClick = {
+                                    val currentAccs = registeredAccounts
+                                    if (currentAccs.isEmpty()) {
+                                        Toast.makeText(context, "Lütfen önce en az bir hesap kaydedin.", Toast.LENGTH_SHORT).show()
+                                        return@OutlinedButton
+                                    }
+
+                                    isManualChecking = true
+                                    manualCheckResultText = null
+                                    coroutineScope.launch {
+                                        try {
+                                            val summaries = mutableListOf<String>()
+                                            var totalNew = 0
+                                            var anyFail = false
+
+                                            for (acc in currentAccs) {
+                                                stateManager.checkAccountSwitch(acc.username)
+                                                val fetchRes = apiClient.fetchNotifications(acc.username, acc.password)
+                                                if (fetchRes.isSuccess) {
+                                                    val allList = fetchRes.getOrDefault(emptyList())
+                                                    val tagged = allList.map { it.copy(accountUsername = acc.username) }
+                                                    val wasFirstBoot = stateManager.isFirstBoot
+                                                    val newOnes = stateManager.filterNewNotifications(tagged)
+                                                    if (newOnes.isNotEmpty()) {
+                                                        for (notif in newOnes) {
+                                                            NotificationHelper.showNotification(context, notif, acc.username)
+                                                        }
+                                                        stateManager.markProcessed(newOnes)
+                                                        totalNew += newOnes.size
+                                                        summaries.add("${acc.shortUsername}: ${newOnes.size} yeni duyuru")
+                                                    } else {
+                                                        if (stateManager.getRecentNotifications().isEmpty() && tagged.isNotEmpty()) {
+                                                            stateManager.markProcessed(tagged.take(15))
+                                                        }
+                                                        summaries.add("${acc.shortUsername}: güncel")
+                                                    }
+                                                } else {
+                                                    anyFail = true
+                                                    val err = fetchRes.exceptionOrNull()?.message?.take(50) ?: "Bağlantı hatası"
+                                                    summaries.add("${acc.shortUsername}: ❌ $err")
+                                                }
+                                            }
+
+                                            recentNotifications = stateManager.getAllRecentNotifications(currentAccs.map { it.username })
+
+                                            if (totalNew > 0) {
+                                                manualCheckResultText = "✅ " + summaries.joinToString(" | ")
+                                                manualCheckSuccess = true
+                                            } else if (!anyFail) {
+                                                manualCheckResultText = "✅ Tüm hesaplar kontrol edildi. Yeni duyuru yok (${summaries.joinToString(", ")})."
+                                                manualCheckSuccess = true
+                                            } else {
+                                                manualCheckResultText = "⚠️ Sonuç: " + summaries.joinToString(" | ")
+                                                manualCheckSuccess = false
+                                            }
+                                        } finally {
+                                            isManualChecking = false
+                                        }
+                                    }
+                                },
+                                enabled = !isManualChecking,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                            ) {
+                                if (isManualChecking) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Kontrol ediliyor...", fontSize = 12.sp)
+                                } else {
+                                    Text("Şimdi Kontrol Et 🔄", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // Account Filter Chips (if more than 1 account is registered)
+                    if (registeredAccounts.size > 1 && recentNotifications.isNotEmpty()) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            FilterChip(
+                                selected = selectedAccountFilter == null,
+                                onClick = { selectedAccountFilter = null },
+                                label = { Text("Tümü (${recentNotifications.size})", fontSize = 12.sp) }
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Kontrol ediliyor...", fontSize = 12.sp)
-                        } else {
-                            Text("Şimdi Kontrol Et 🔄", fontSize = 12.sp)
+                            registeredAccounts.forEach { acc ->
+                                val count = recentNotifications.count {
+                                    it.accountUsername?.substringBefore("@").equals(acc.shortUsername, ignoreCase = true)
+                                }
+                                FilterChip(
+                                    selected = selectedAccountFilter == acc.shortUsername,
+                                    onClick = {
+                                        selectedAccountFilter = if (selectedAccountFilter == acc.shortUsername) null else acc.shortUsername
+                                    },
+                                    label = { Text("🎓 ${acc.shortUsername} ($count)", fontSize = 12.sp) }
+                                )
+                            }
                         }
                     }
                 }
@@ -526,17 +761,20 @@ fun MainScreen(
             }
 
             // 5. Recent Notifications List
-            if (recentNotifications.isEmpty()) {
+            if (displayedNotifications.isEmpty()) {
                 item {
                     Text(
-                        text = "Henüz yakalanan bildirim yok. Sistem arka planda yeni duyuruları bekliyor.",
+                        text = if (recentNotifications.isEmpty())
+                            "Henüz yakalanan bildirim yok. Sistem arka planda yeni duyuruları bekliyor."
+                        else
+                            "Bu hesap için gösterilecek bildirim bulunmuyor.",
                         fontSize = 13.sp,
                         color = Color.Gray,
                         modifier = Modifier.padding(vertical = 12.dp)
                     )
                 }
             } else {
-                items(recentNotifications) { notif ->
+                items(displayedNotifications) { notif ->
                     NotificationItemCard(
                         notif = notif,
                         registeredAccounts = registeredAccounts
@@ -547,6 +785,32 @@ fun MainScreen(
                 }
             }
         }
+    }
+
+    // Clear confirmation dialog
+    if (showClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDialog = false },
+            title = { Text("Bildirim Geçmişini Temizle") },
+            text = { Text("Listelenen tüm bildirim geçmişi silinecektir. Yeni gelecek duyurular bundan etkilenmez. Onaylıyor musunuz?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        stateManager.clearAllRecentNotifications(registeredAccounts.map { it.username })
+                        recentNotifications = emptyList()
+                        showClearDialog = false
+                        Toast.makeText(context, "Bildirim geçmişi temizlendi.", Toast.LENGTH_SHORT).show()
+                    }
+                ) {
+                    Text("Evet, Temizle", color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDialog = false }) {
+                    Text("İptal")
+                }
+            }
+        )
     }
 }
 

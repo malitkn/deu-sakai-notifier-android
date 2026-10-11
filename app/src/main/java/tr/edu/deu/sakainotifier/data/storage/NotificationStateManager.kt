@@ -330,6 +330,22 @@ class NotificationStateManager(context: Context) {
         }
     }
 
+    /**
+     * Clears all cached recent notifications across all registered accounts.
+     * Does NOT erase seen IDs or hashes (preventing spam alerts for already seen announcements).
+     */
+    fun clearAllRecentNotifications(accounts: List<String>) {
+        val editor = prefs.edit()
+        editor.remove(KEY_RECENT_NOTIFICATIONS)
+        editor.remove(getAccountKey(KEY_RECENT_NOTIFICATIONS))
+        for (acc in accounts) {
+            val norm = acc.trim().lowercase()
+            editor.remove("${KEY_RECENT_NOTIFICATIONS}_$norm")
+            editor.remove("${KEY_RECENT_NOTIFICATIONS}_${norm.substringBefore("@")}")
+        }
+        editor.apply()
+    }
+
     fun registerChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnSharedPreferenceChangeListener(listener)
     }
