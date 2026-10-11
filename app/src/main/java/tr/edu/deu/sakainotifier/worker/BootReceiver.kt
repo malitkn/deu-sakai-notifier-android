@@ -11,7 +11,7 @@ class BootReceiver : BroadcastReceiver() {
             intent.action == Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
             val securePrefs = SecurePreferencesManager(context)
-            if (securePrefs.isMonitoringActive && securePrefs.hasCredentials()) {
+            if ((securePrefs.isMonitoringActive || securePrefs.isMailMonitoringActive) && securePrefs.hasCredentials()) {
                 WorkScheduler.schedule(context, securePrefs.pollIntervalMinutes)
             }
         }

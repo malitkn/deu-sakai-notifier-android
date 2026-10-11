@@ -7,7 +7,9 @@ Dokuz Eylül Üniversitesi Sakai LMS sisteminde bildirimlerin çalışmaması/ge
 ## 🌟 Öne Çıkan Özellikler
 
 * 🔔 **Çalışmayan Bildirimlere Çözüm:** Sakai'ye her gün manuel olarak girip duyuru kontrol etme derdini bitirir; yeni bir duyuru yayınlandığında telefonunuzun bildirim çubuğunda anında görünür.
-* 👥 **Çoklu Hesap Desteği (ÇAP & Yan Dal):** Çift anadal (ÇAP) veya yan dal yapan öğrenciler için birden fazla hesabı aynı anda takip eder. Bildirimler ilgili öğrenci numarasıyla etiketlenir (`2021123456: [Ders] Başlık`).
+* ✉️ **Öğrenci E-postası Takibi (İsteğe Bağlı):** Dokuz Eylül Webmail (`ogrmail.deu.edu.tr`) sistemiyle entegre çalışır. Hesabınıza öğrenci e-posta adresinizi ekleyerek yeni gelen öğrenci maillerini de anlık bildirim olarak alabilirsiniz.
+* 👥 **Çoklu Hesap Desteği (ÇAP & Yan Dal):** Çift anadal (ÇAP) veya yan dal yapan öğrenciler için birden fazla hesabı aynı anda takip eder. Bildirimler ilgili öğrenci numarasıyla etiketlenir (`2021123456: [Ders] Başlık` veya `✉️ 2021123456: [Gönderen] Konu`).
+* ✏️ **Kolay Hesap Düzenleme:** Önceden eklediğiniz hesapların bilgilerini veya e-posta adresini dilediğiniz zaman düzenleyip güncelleyebilirsiniz.
 * 🔒 **%100 Güvenli (Sıfır Harici Sunucu):** Giriş bilgileriniz harici hiçbir sunucuya gitmez. Tamamen kendi telefonunuzda, cihazın donanım kasasında (`Android KeyStore` & `EncryptedSharedPreferences`) şifrelenerek saklanır.
 * 🔋 **Pil Dostu & Akıllı Takip:** Arka planda Android'in modern `WorkManager` altyapısıyla çalışır, şarj tüketmez.
 * 🚀 **Otomatik Güncelleme Uyarısı:** Yeni bir sürüm çıktığında uygulama içerisinden tek tıkla doğrudan güncelleyebilirsiniz.
@@ -21,8 +23,8 @@ Herhangi bir mağazaya ihtiyaç duymadan doğrudan APK olarak kurulabilir:
 
 1. **İndir:** En güncel [Universal Release APK](../../releases/latest) dosyasını telefonunuza indirin.
 2. **Kur:** İndirilen `.apk` dosyasına dokunun ve kurulumu onaylayın.
-3. **Giriş Yap:** Öğrenci numaranızı ve şifrenizi girip *"Hesabı Doğrula ve Kaydet"* butonuna basın. (ÇAP/yan dal yapıyorsanız ikinci hesabınızı da ekleyebilirsiniz.)
-4. **Takibi Başlatın:** *"Takip Aktif"* anahtarını açın. Artık tüm yeni Sakai duyuruları anında cebinizde!
+3. **Giriş Yap:** Öğrenci numaranızı, şifrenizi ve dilerseniz öğrenci e-posta adresinizi girip *"Hesabı Doğrula ve Kaydet"* butonuna basın. (ÇAP/yan dal yapıyorsanız ikinci hesabınızı da ekleyebilirsiniz.)
+4. **Takibi Başlatın:** *"Sakai Takibi"* ve/veya *"Öğrenci E-postası Takibi"* anahtarını açın. Artık tüm yeni Sakai duyuruları ve öğrenci e-postaları anında cebinizde!
 
 ---
 

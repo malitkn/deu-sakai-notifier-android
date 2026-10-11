@@ -62,15 +62,26 @@ object NotificationHelper {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Format: "öğrenci numarası: [Ders] Başlık"
-        val userPrefix = if (!accountPrefix.isNullOrBlank()) "$accountPrefix: " else ""
+        // Format for Email: "✉️ <studentNo>: [<Sender>] <Subject>"
+        // Format for Sakai: "<studentNo>: [<Course>] <Title>"
+        val userPrefix = when {
+            notification.isEmail && !accountPrefix.isNullOrBlank() -> "✉️ $accountPrefix: "
+            notification.isEmail -> "✉️ "
+            !accountPrefix.isNullOrBlank() -> "$accountPrefix: "
+            else -> ""
+        }
+
         val displayTitle = if (!notification.siteTitle.isNullOrBlank()) {
             "${userPrefix}[${notification.siteTitle}] ${notification.title}"
         } else {
             "${userPrefix}${notification.title}"
         }
 
-        val displayBody = notification.body ?: "Yeni bir DEU Sakai duyurusu yayınlandı."
+        val displayBody = notification.body ?: if (notification.isEmail) {
+            "Yeni bir öğrenci e-postası alındı."
+        } else {
+            "Yeni bir DEU Sakai duyurusu yayınlandı."
+        }
 
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_popup_reminder)

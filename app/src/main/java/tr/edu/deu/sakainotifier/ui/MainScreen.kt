@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tr.edu.deu.sakainotifier.data.api.AuthResult
+import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
 import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
 import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
@@ -52,13 +53,17 @@ fun MainScreen(
     val coroutineScope = rememberCoroutineScope()
     val authClient = remember { SakaiAuthClient() }
     val apiClient = remember { SakaiApiClient(authClient) }
+    val webmailClient = remember { DeuWebmailClient() }
 
     var registeredAccounts by remember { mutableStateOf(securePrefs.getAccounts()) }
+    var editingAccountUsername by remember { mutableStateOf<String?>(null) }
     var inputUsername by remember { mutableStateOf("") }
     var inputPassword by remember { mutableStateOf("") }
+    var inputEmail by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
     var isMonitoringActive by remember { mutableStateOf(securePrefs.isMonitoringActive) }
+    var isMailMonitoringActive by remember { mutableStateOf(securePrefs.isMailMonitoringActive) }
     var selectedInterval by remember { mutableStateOf(securePrefs.pollIntervalMinutes) }
 
     var isAddingAccount by remember { mutableStateOf(false) }
@@ -82,9 +87,9 @@ fun MainScreen(
 
     val currentAppVersion = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.1.0"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.0"
         } catch (_: Exception) {
-            "1.1.0"
+            "1.2.0"
         }
     }
 
@@ -143,7 +148,7 @@ fun MainScreen(
                             color = Color.White
                         )
                         Text(
-                            text = "Dokuz Eylül Üniversitesi LMS v$currentAppVersion",
+                            text = "Dokuz Eylül Üniversitesi LMS & Webmail v$currentAppVersion",
                             fontSize = 12.sp,
                             color = Color.White.copy(alpha = 0.8f)
                         )
@@ -227,53 +232,115 @@ fun MainScreen(
 
             // 1. Service Status Card
             item {
+                val isAnyActive = isMonitoringActive || isMailMonitoringActive
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isMonitoringActive) Color(0xFFE8F5E9) else Color(0xFFECEFF1)
+                        containerColor = if (isAnyActive) Color(0xFFE8F5E9) else Color(0xFFECEFF1)
                     )
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                        Column {
                             Text(
-                                text = if (isMonitoringActive) "Takip Aktif (Çalışıyor)" else "Takip Durduruldu",
+                                text = if (isAnyActive) "Takip Aktif (Çalışıyor)" else "Takip Durduruldu",
                                 fontWeight = FontWeight.Bold,
-                                color = if (isMonitoringActive) DeuSuccess else Color.DarkGray,
+                                color = if (isAnyActive) DeuSuccess else Color.DarkGray,
                                 fontSize = 16.sp
                             )
                             Text(
-                                text = if (isMonitoringActive)
-                                    "Kayıtlı tüm hesaplar her $selectedInterval dakikada bir kontrol ediliyor."
+                                text = if (isAnyActive)
+                                    "Kayıtlı hesaplar her $selectedInterval dakikada bir kontrol ediliyor."
                                 else
-                                    "Yeni duyurular için takibi başlatın.",
+                                    "Bildirimleri almak için aşağıdaki servisleri başlatın.",
                                 fontSize = 13.sp,
                                 color = Color.Gray
                             )
                         }
-                        Switch(
-                            checked = isMonitoringActive,
-                            onCheckedChange = { active ->
-                                if (active && registeredAccounts.isEmpty()) {
-                                    Toast.makeText(context, "Lütfen önce en az bir öğrenci hesabı ekleyin.", Toast.LENGTH_SHORT).show()
-                                    return@Switch
-                                }
-                                isMonitoringActive = active
-                                securePrefs.isMonitoringActive = active
-                                if (active) {
-                                    WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
-                                    Toast.makeText(context, "Sakai takibi başlatıldı.", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    WorkScheduler.cancel(context)
-                                    Toast.makeText(context, "Sakai takibi durduruldu.", Toast.LENGTH_SHORT).show()
-                                }
+
+                        HorizontalDivider(color = Color.Black.copy(alpha = 0.08f))
+
+                        // Sakai Announcement Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "🎓 Sakai Duyuru Takibi",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Duyuru ve ödevler için bildirim gönderir.",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
                             }
-                        )
+                            Switch(
+                                checked = isMonitoringActive,
+                                onCheckedChange = { active ->
+                                    if (active && registeredAccounts.isEmpty()) {
+                                        Toast.makeText(context, "Lütfen önce en az bir öğrenci hesabı ekleyin.", Toast.LENGTH_SHORT).show()
+                                        return@Switch
+                                    }
+                                    isMonitoringActive = active
+                                    securePrefs.isMonitoringActive = active
+                                    if (active || isMailMonitoringActive) {
+                                        WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
+                                    } else {
+                                        WorkScheduler.cancel(context)
+                                    }
+                                    Toast.makeText(context, if (active) "Sakai takibi başlatıldı." else "Sakai takibi durduruldu.", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+
+                        // Student Webmail Toggle
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "✉️ Öğrenci E-postası Takibi",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "Gelen yeni öğrenci mailleri için bildirim gönderir.",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
+                                )
+                            }
+                            Switch(
+                                checked = isMailMonitoringActive,
+                                onCheckedChange = { active ->
+                                    if (active && registeredAccounts.none { !it.emailAddress.isNullOrBlank() }) {
+                                        Toast.makeText(
+                                            context,
+                                            "Öğrenci e-postası takibi için önce hesabınıza e-posta adresi ekleyin (✏️ Düzenle).",
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                        return@Switch
+                                    }
+                                    isMailMonitoringActive = active
+                                    securePrefs.isMailMonitoringActive = active
+                                    if (active || isMonitoringActive) {
+                                        WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
+                                    } else {
+                                        WorkScheduler.cancel(context)
+                                    }
+                                    Toast.makeText(context, if (active) "Öğrenci e-postası takibi başlatıldı." else "Öğrenci e-postası takibi durduruldu.", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -389,6 +456,7 @@ fun MainScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Row(
+                                                modifier = Modifier.weight(1f),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
@@ -403,28 +471,73 @@ fun MainScreen(
                                                     )
                                                 }
                                                 Column {
-                                                    Text(
-                                                        text = acc.shortUsername,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 14.sp,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = acc.shortUsername,
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 14.sp,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                        if (!acc.emailAddress.isNullOrBlank()) {
+                                                            Surface(
+                                                                color = Color(0xFFFEF3C7),
+                                                                shape = RoundedCornerShape(4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "✉️ Mail Bağlı",
+                                                                    fontSize = 10.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = Color(0xFF92400E),
+                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
                                                     Text(
                                                         text = acc.username,
                                                         fontSize = 11.sp,
                                                         color = Color.Gray
                                                     )
+                                                    if (!acc.emailAddress.isNullOrBlank()) {
+                                                        Text(
+                                                            text = "Mail: ${acc.emailAddress}",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFF1E40AF)
+                                                        )
+                                                    }
                                                 }
                                             }
-                                            IconButton(
-                                                onClick = {
-                                                    securePrefs.removeAccount(acc.username)
-                                                    registeredAccounts = securePrefs.getAccounts()
-                                                    recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
-                                                    Toast.makeText(context, "${acc.shortUsername} hesabı silindi.", Toast.LENGTH_SHORT).show()
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(
+                                                    onClick = {
+                                                        editingAccountUsername = acc.username
+                                                        inputUsername = acc.username
+                                                        inputPassword = acc.password
+                                                        inputEmail = acc.emailAddress.orEmpty()
+                                                        accountFeedbackText = null
+                                                    }
+                                                ) {
+                                                    Text("✏️", fontSize = 16.sp)
                                                 }
-                                            ) {
-                                                Text("🗑️", fontSize = 16.sp)
+                                                IconButton(
+                                                    onClick = {
+                                                        if (editingAccountUsername == acc.username) {
+                                                            editingAccountUsername = null
+                                                            inputUsername = ""
+                                                            inputPassword = ""
+                                                            inputEmail = ""
+                                                        }
+                                                        securePrefs.removeAccount(acc.username)
+                                                        registeredAccounts = securePrefs.getAccounts()
+                                                        recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
+                                                        Toast.makeText(context, "${acc.shortUsername} hesabı silindi.", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                ) {
+                                                    Text("🗑️", fontSize = 16.sp)
+                                                }
                                             }
                                         }
                                     }
@@ -433,12 +546,38 @@ fun MainScreen(
                             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                         }
 
-                        // Add / Update Account Form
-                        Text(
-                            text = if (registeredAccounts.isEmpty()) "Hesap Ekle" else "Yeni Hesap Ekle / Güncelle",
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp
-                        )
+                        // Add / Update Account Form Header
+                        if (editingAccountUsername != null) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Hesabı Düzenle (✏️ ${editingAccountUsername?.substringBefore("@")})",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = DeuNavy
+                                )
+                                TextButton(
+                                    onClick = {
+                                        editingAccountUsername = null
+                                        inputUsername = ""
+                                        inputPassword = ""
+                                        inputEmail = ""
+                                        accountFeedbackText = null
+                                    }
+                                ) {
+                                    Text("İptal Et", fontSize = 12.sp)
+                                }
+                            }
+                        } else {
+                            Text(
+                                text = if (registeredAccounts.isEmpty()) "Hesap Ekle" else "Yeni Hesap Ekle",
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 14.sp
+                            )
+                        }
 
                         OutlinedTextField(
                             value = inputUsername,
@@ -452,7 +591,7 @@ fun MainScreen(
                         OutlinedTextField(
                             value = inputPassword,
                             onValueChange = { inputPassword = it },
-                            label = { Text("Sakai Şifresi") },
+                            label = { Text("Şifre") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
@@ -462,6 +601,22 @@ fun MainScreen(
                                     Text(if (passwordVisible) "Gizle" else "Göster", fontSize = 12.sp)
                                 }
                             }
+                        )
+
+                        OutlinedTextField(
+                            value = inputEmail,
+                            onValueChange = { inputEmail = it },
+                            label = { Text("Öğrenci E-postası (İsteğe Bağlı)") },
+                            placeholder = { Text("Örn: ad.soyad@ogr.deu.edu.tr") },
+                            supportingText = {
+                                Text(
+                                    text = "Boş bırakılırsa e-posta takibi yapılmaz. Ayrı şifre gerekmez (şifre aynıdır).",
+                                    fontSize = 11.sp,
+                                    color = Color.Gray
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
                         )
 
                         Row(
@@ -475,19 +630,49 @@ fun MainScreen(
                                         Toast.makeText(context, "Lütfen öğrenci no ve şifre girin.", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
+                                    val normalizedEmail = if (inputEmail.isNotBlank()) DeuWebmailClient.normalizeEmail(inputEmail) else null
 
                                     isAddingAccount = true
                                     accountFeedbackText = null
                                     coroutineScope.launch {
                                         when (val res = authClient.authenticate(normalizedUser, inputPassword)) {
                                             is AuthResult.Success -> {
-                                                val acc = SakaiAccount(normalizedUser, inputPassword)
+                                                // If student email is entered, ALSO test Webmail login
+                                                if (!normalizedEmail.isNullOrBlank()) {
+                                                    val webmailRes = webmailClient.testLogin(normalizedEmail, inputPassword)
+                                                    if (webmailRes.isFailure) {
+                                                        val mailErrMsg = webmailRes.exceptionOrNull()?.message ?: "Giriş başarısız."
+                                                        accountFeedbackText = "❌ Sakai girişi başarılı fakat Öğrenci E-postası girişi başarısız: $mailErrMsg"
+                                                        accountFeedbackSuccess = false
+                                                        isAddingAccount = false
+                                                        return@launch
+                                                    }
+                                                }
+
+                                                if (editingAccountUsername != null && !editingAccountUsername.equals(normalizedUser, ignoreCase = true)) {
+                                                    securePrefs.removeAccount(editingAccountUsername!!)
+                                                }
+
+                                                val acc = SakaiAccount(
+                                                    username = normalizedUser,
+                                                    password = inputPassword,
+                                                    emailAddress = normalizedEmail
+                                                )
                                                 securePrefs.saveAccount(acc)
                                                 registeredAccounts = securePrefs.getAccounts()
                                                 stateManager.checkAccountSwitch(normalizedUser)
+
+                                                val shortName = acc.shortUsername
+                                                editingAccountUsername = null
                                                 inputUsername = ""
                                                 inputPassword = ""
-                                                accountFeedbackText = "✅ Giriş doğrulandı! ${acc.shortUsername} hesabı başarıyla kaydedildi."
+                                                inputEmail = ""
+
+                                                accountFeedbackText = if (normalizedEmail != null) {
+                                                    "✅ Giriş doğrulandı! $shortName için Sakai ve Öğrenci E-postası bağlandı."
+                                                } else {
+                                                    "✅ Giriş doğrulandı! $shortName Sakai hesabı başarıyla kaydedildi."
+                                                }
                                                 accountFeedbackSuccess = true
 
                                                 // Fetch and populate initial recent notifications for this account
@@ -499,14 +684,24 @@ fun MainScreen(
                                                     stateManager.markProcessed(tagged.take(15))
                                                 }
 
+                                                // If email configured, fetch initial unread emails
+                                                if (normalizedEmail != null) {
+                                                    val initMail = webmailClient.fetchUnreadEmails(normalizedEmail, inputPassword, normalizedUser)
+                                                    if (initMail.isSuccess) {
+                                                        val mailList = initMail.getOrDefault(emptyList())
+                                                        stateManager.filterNewEmailNotifications(mailList)
+                                                        stateManager.markProcessed(mailList.take(5))
+                                                    }
+                                                }
+
                                                 recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                                             }
                                             is AuthResult.InvalidCredentials -> {
-                                                accountFeedbackText = "❌ Hata: Kullanıcı adı ya da şifreniz hatalı."
+                                                accountFeedbackText = "❌ Sakai Hatası: Kullanıcı adı ya da şifreniz hatalı."
                                                 accountFeedbackSuccess = false
                                             }
                                             is AuthResult.Error -> {
-                                                accountFeedbackText = "❌ Bağlantı hatası: ${res.message}"
+                                                accountFeedbackText = "❌ Sakai Bağlantı hatası: ${res.message}"
                                                 accountFeedbackSuccess = false
                                             }
                                         }
@@ -524,7 +719,7 @@ fun MainScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Text("Doğrulanıyor...")
                                 } else {
-                                    Text("Hesabı Doğrula ve Kaydet")
+                                    Text(if (editingAccountUsername != null) "Hesabı Güncelle ve Doğrula" else "Hesabı Doğrula ve Kaydet")
                                 }
                             }
                         }
@@ -580,7 +775,7 @@ fun MainScreen(
                                     onClick = {
                                         selectedInterval = minutes
                                         securePrefs.pollIntervalMinutes = minutes
-                                        if (isMonitoringActive) {
+                                        if (isMonitoringActive || isMailMonitoringActive) {
                                             WorkScheduler.schedule(context, minutes, forceUpdate = true)
                                         }
                                     },
@@ -652,11 +847,13 @@ fun MainScreen(
 
                                             for (acc in currentAccs) {
                                                 stateManager.checkAccountSwitch(acc.username)
+                                                val parts = mutableListOf<String>()
+
+                                                // 1. Check Sakai Announcements
                                                 val fetchRes = apiClient.fetchNotifications(acc.username, acc.password)
                                                 if (fetchRes.isSuccess) {
                                                     val allList = fetchRes.getOrDefault(emptyList())
                                                     val tagged = allList.map { it.copy(accountUsername = acc.username) }
-                                                    val wasFirstBoot = stateManager.isFirstBoot
                                                     val newOnes = stateManager.filterNewNotifications(tagged)
                                                     if (newOnes.isNotEmpty()) {
                                                         for (notif in newOnes) {
@@ -664,18 +861,47 @@ fun MainScreen(
                                                         }
                                                         stateManager.markProcessed(newOnes)
                                                         totalNew += newOnes.size
-                                                        summaries.add("${acc.shortUsername}: ${newOnes.size} yeni duyuru")
+                                                        parts.add("${newOnes.size} yeni duyuru")
                                                     } else {
                                                         if (stateManager.getRecentNotifications().isEmpty() && tagged.isNotEmpty()) {
                                                             stateManager.markProcessed(tagged.take(15))
                                                         }
-                                                        summaries.add("${acc.shortUsername}: güncel")
+                                                        parts.add("duyurular güncel")
                                                     }
                                                 } else {
                                                     anyFail = true
-                                                    val err = fetchRes.exceptionOrNull()?.message?.take(50) ?: "Bağlantı hatası"
-                                                    summaries.add("${acc.shortUsername}: ❌ $err")
+                                                    val err = fetchRes.exceptionOrNull()?.message?.take(30) ?: "Bağlantı hatası"
+                                                    parts.add("Sakai: ❌ $err")
                                                 }
+
+                                                // 2. Check Student Webmail if configured
+                                                if (!acc.emailAddress.isNullOrBlank()) {
+                                                    val mailRes = webmailClient.fetchUnreadEmails(
+                                                        email = acc.emailAddress,
+                                                        pass = acc.password,
+                                                        studentUsername = acc.username
+                                                    )
+                                                    if (mailRes.isSuccess) {
+                                                        val mailList = mailRes.getOrDefault(emptyList())
+                                                        val newMails = stateManager.filterNewEmailNotifications(mailList)
+                                                        if (newMails.isNotEmpty()) {
+                                                            for (notif in newMails) {
+                                                                NotificationHelper.showNotification(context, notif, acc.username)
+                                                            }
+                                                            stateManager.markProcessed(newMails)
+                                                            totalNew += newMails.size
+                                                            parts.add("${newMails.size} yeni mail")
+                                                        } else {
+                                                            parts.add("mail güncel")
+                                                        }
+                                                    } else {
+                                                        anyFail = true
+                                                        val mErr = mailRes.exceptionOrNull()?.message?.take(30) ?: "Mail hatası"
+                                                        parts.add("Mail: ❌ $mErr")
+                                                    }
+                                                }
+
+                                                summaries.add("${acc.shortUsername}: " + parts.joinToString(", "))
                                             }
 
                                             recentNotifications = stateManager.getAllRecentNotifications(currentAccs.map { it.username })
@@ -684,7 +910,7 @@ fun MainScreen(
                                                 manualCheckResultText = "✅ " + summaries.joinToString(" | ")
                                                 manualCheckSuccess = true
                                             } else if (!anyFail) {
-                                                manualCheckResultText = "✅ Tüm hesaplar kontrol edildi. Yeni duyuru yok (${summaries.joinToString(", ")})."
+                                                manualCheckResultText = "✅ Tüm hesaplar kontrol edildi (${summaries.joinToString(" | ")})."
                                                 manualCheckSuccess = true
                                             } else {
                                                 manualCheckResultText = "⚠️ Sonuç: " + summaries.joinToString(" | ")
@@ -882,29 +1108,56 @@ fun NotificationItemCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // Header Row: Prominent Account Badge & Date
+            // Header Row: Prominent Account Badge, Mail Badge & Date
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Surface(
-                    color = currentTheme.badgeBg,
-                    shape = RoundedCornerShape(6.dp),
-                    border = BorderStroke(1.dp, currentTheme.cardBorder.copy(alpha = 0.7f))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    Surface(
+                        color = currentTheme.badgeBg,
+                        shape = RoundedCornerShape(6.dp),
+                        border = BorderStroke(1.dp, currentTheme.cardBorder.copy(alpha = 0.7f))
                     ) {
-                        Text("🎓", fontSize = 12.sp)
-                        Text(
-                            text = "Öğrenci: $shortUser",
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = currentTheme.badgeText
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Text("🎓", fontSize = 12.sp)
+                            Text(
+                                text = "Öğrenci: $shortUser",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = currentTheme.badgeText
+                            )
+                        }
+                    }
+
+                    if (notif.isEmail) {
+                        Surface(
+                            color = Color(0xFFFEF3C7),
+                            shape = RoundedCornerShape(6.dp),
+                            border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.7f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text("✉️", fontSize = 11.sp)
+                                Text(
+                                    text = "Öğrenci Maili",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF92400E)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -918,19 +1171,36 @@ fun NotificationItemCard(
                 }
             }
 
-            // Course Name
-            notif.siteTitle?.let { site ->
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = "📚 $site",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
-                    )
+            // Subtitle: Sender (for email) or Course Name (for Sakai)
+            if (notif.isEmail) {
+                notif.siteTitle?.let { senderName ->
+                    Surface(
+                        color = Color(0xFFE0F2FE),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "👤 Gönderen: $senderName",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0369A1),
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            } else {
+                notif.siteTitle?.let { site ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "📚 $site",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
 
@@ -960,7 +1230,7 @@ fun NotificationItemCard(
                     horizontalArrangement = Arrangement.End
                 ) {
                     Text(
-                        text = "Duyuruyu Aç ↗",
+                        text = if (notif.isEmail) "Webmail'e Git ↗" else "Duyuruyu Aç ↗",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,

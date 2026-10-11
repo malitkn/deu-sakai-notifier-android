@@ -30,6 +30,7 @@ class SecurePreferencesManager(context: Context) {
         private const val KEY_ACCOUNTS_JSON = "key_accounts_json"
         private const val KEY_POLL_INTERVAL = "key_poll_interval_minutes"
         private const val KEY_MONITORING_ACTIVE = "key_monitoring_active"
+        private const val KEY_MAIL_MONITORING_ACTIVE = "key_mail_monitoring_active"
         private const val KEY_LAST_CHECK_TIME = "key_last_check_timestamp"
 
         // ENFORCED ARCHITECTURAL MINIMUM: 20 Minutes
@@ -59,6 +60,10 @@ class SecurePreferencesManager(context: Context) {
     var isMonitoringActive: Boolean
         get() = prefs.getBoolean(KEY_MONITORING_ACTIVE, false)
         set(value) = prefs.edit().putBoolean(KEY_MONITORING_ACTIVE, value).apply()
+
+    var isMailMonitoringActive: Boolean
+        get() = prefs.getBoolean(KEY_MAIL_MONITORING_ACTIVE, false)
+        set(value) = prefs.edit().putBoolean(KEY_MAIL_MONITORING_ACTIVE, value).apply()
 
     var lastCheckTimestamp: Long
         get() = prefs.getLong(KEY_LAST_CHECK_TIME, 0L)

@@ -17,6 +17,7 @@ class NotificationStateManager(context: Context) {
         private const val KEY_SEEN_IDS = "key_seen_notification_ids"
         private const val KEY_SEEN_HASHES = "key_seen_content_hashes"
         private const val KEY_IS_FIRST_BOOT = "key_is_first_boot"
+        private const val KEY_IS_FIRST_MAIL_BOOT = "key_is_first_mail_boot"
         const val KEY_RECENT_NOTIFICATIONS = "key_recent_notifications_json"
     }
 
@@ -57,6 +58,9 @@ class NotificationStateManager(context: Context) {
     val isFirstBoot: Boolean
         get() = prefs.getBoolean(getAccountKey(KEY_IS_FIRST_BOOT), true)
 
+    val isFirstMailBoot: Boolean
+        get() = prefs.getBoolean(getAccountKey(KEY_IS_FIRST_MAIL_BOOT), true)
+
     /**
      * Checks if the active student account has changed.
      * Switches the active namespace to the new student account without destroying
@@ -83,6 +87,7 @@ class NotificationStateManager(context: Context) {
                 .remove(getAccountKey(KEY_SEEN_IDS))
                 .remove(getAccountKey(KEY_SEEN_HASHES))
                 .remove(getAccountKey(KEY_IS_FIRST_BOOT))
+                .remove(getAccountKey(KEY_IS_FIRST_MAIL_BOOT))
                 .remove(getAccountKey(KEY_RECENT_NOTIFICATIONS))
                 .apply()
         } else {
@@ -155,6 +160,34 @@ class NotificationStateManager(context: Context) {
     }
 
     /**
+     * Filters incoming student webmail notifications.
+     * On first check for an account, alerts up to 3 active emails and marks all as seen (bootstrap).
+     */
+    fun filterNewEmailNotifications(emails: List<SakaiNotification>): List<SakaiNotification> {
+        val seenIds = getSeenIds()
+        val seenHashes = getSeenHashes()
+
+        if (isFirstMailBoot) {
+            for (notif in emails) {
+                seenIds.add(notif.sakaiId)
+                seenHashes.add(notif.contentHash)
+            }
+
+            prefs.edit()
+                .putStringSet(getAccountKey(KEY_SEEN_IDS), seenIds)
+                .putStringSet(getAccountKey(KEY_SEEN_HASHES), seenHashes)
+                .putBoolean(getAccountKey(KEY_IS_FIRST_MAIL_BOOT), false)
+                .apply()
+
+            return emails.take(3)
+        }
+
+        return emails.filter { notif ->
+            !seenIds.contains(notif.sakaiId) && !seenHashes.contains(notif.contentHash)
+        }
+    }
+
+    /**
      * Marks notifications as processed for current account.
      */
     fun markProcessed(notifications: List<SakaiNotification>) {
@@ -196,6 +229,7 @@ class NotificationStateManager(context: Context) {
             obj.put("url", item.url)
             obj.put("publishedAt", item.publishedAt)
             obj.put("accountUsername", item.accountUsername ?: currentUser)
+            obj.put("isEmail", item.isEmail)
             array.put(obj)
         }
         prefs.edit().putString(getAccountKey(KEY_RECENT_NOTIFICATIONS), array.toString()).apply()
@@ -219,7 +253,8 @@ class NotificationStateManager(context: Context) {
                         url = obj.optString("url").takeIf { it.isNotBlank() },
                         publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
                         rawJson = obj.toString(),
-                        accountUsername = accUser
+                        accountUsername = accUser,
+                        isEmail = obj.optBoolean("isEmail", false)
                     )
                 )
             }
@@ -274,7 +309,8 @@ class NotificationStateManager(context: Context) {
                                         url = obj.optString("url").takeIf { it.isNotBlank() },
                                         publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
                                         rawJson = obj.toString(),
-                                        accountUsername = notifUser
+                                        accountUsername = notifUser,
+                                        isEmail = obj.optBoolean("isEmail", false)
                                     )
                                 )
                             }
@@ -309,7 +345,8 @@ class NotificationStateManager(context: Context) {
                                 url = obj.optString("url").takeIf { it.isNotBlank() },
                                 publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
                                 rawJson = obj.toString(),
-                                accountUsername = notifUser
+                                accountUsername = notifUser,
+                                isEmail = obj.optBoolean("isEmail", false)
                             )
                         )
                     }

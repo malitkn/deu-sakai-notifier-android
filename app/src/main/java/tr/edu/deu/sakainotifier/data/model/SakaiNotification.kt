@@ -19,7 +19,8 @@ data class SakaiNotification(
     val url: String?,
     val publishedAt: String?,
     val rawJson: String,
-    val accountUsername: String? = null
+    val accountUsername: String? = null,
+    val isEmail: Boolean = false
 ) {
     companion object {
         /**
@@ -85,6 +86,8 @@ data class SakaiNotification(
 
             val publishedAt = formatPublishedDate(rawDate)
 
+            val isEmail = json.optBoolean("isEmail", false)
+
             return SakaiNotification(
                 sakaiId = sakaiId,
                 contentHash = contentHash,
@@ -94,7 +97,8 @@ data class SakaiNotification(
                 url = url?.trim(),
                 publishedAt = publishedAt?.trim(),
                 rawJson = rawString,
-                accountUsername = accountUsername
+                accountUsername = accountUsername,
+                isEmail = isEmail
             )
         }
 
