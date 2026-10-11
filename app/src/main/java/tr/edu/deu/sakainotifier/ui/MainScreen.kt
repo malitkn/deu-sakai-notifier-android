@@ -34,10 +34,10 @@ import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
 import tr.edu.deu.sakainotifier.notification.NotificationHelper
 import tr.edu.deu.sakainotifier.ui.theme.DeuNavy
-import tr.edu.deu.sakainotifier.ui.theme.DeuSuccess
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import tr.edu.deu.sakainotifier.worker.WorkScheduler
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun MainScreen(
     securePrefs: SecurePreferencesManager,
