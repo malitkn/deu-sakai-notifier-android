@@ -26,6 +26,22 @@ sealed class AuthResult {
     data class Error(val message: String, val cause: Throwable? = null) : AuthResult()
 }
 
+object SakaiUsernameUtils {
+    /**
+     * Automatically appends @ogr.deu.edu.tr if the student enters only their student ID number.
+     * Preserves existing domain if user explicitly typed @ogr.deu.edu.tr or @deu.edu.tr.
+     */
+    fun normalize(input: String): String {
+        val trimmed = input.trim()
+        if (trimmed.isBlank()) return ""
+        return if (!trimmed.contains("@")) {
+            "$trimmed@ogr.deu.edu.tr"
+        } else {
+            trimmed
+        }
+    }
+}
+
 class SakaiAuthClient(
     private val client: OkHttpClient = OkHttpClient.Builder()
         .followRedirects(true)
@@ -39,8 +55,9 @@ class SakaiAuthClient(
     }
 
     suspend fun authenticate(username: String, password: String): AuthResult = withContext(Dispatchers.IO) {
+        val normalizedUser = SakaiUsernameUtils.normalize(username)
         val formBody = FormBody.Builder()
-            .add("eid", username.trim())
+            .add("eid", normalizedUser)
             .add("pw", password)
             .add("submit", "Giriş")
             .build()

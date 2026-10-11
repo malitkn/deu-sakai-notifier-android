@@ -21,14 +21,26 @@ class SakaiApiClient(
     }
 
     private var currentSession: SakaiSession? = null
+    private var sessionUsername: String? = null
+
+    fun invalidateSession() {
+        currentSession = null
+        sessionUsername = null
+    }
 
     suspend fun fetchNotifications(
         username: String,
         password: String
     ): Result<List<SakaiNotification>> = withContext(Dispatchers.IO) {
+        val normalizedUser = SakaiUsernameUtils.normalize(username)
+        if (sessionUsername != normalizedUser) {
+            currentSession = null
+            sessionUsername = normalizedUser
+        }
+
         // Ensure valid session exists
         if (currentSession == null) {
-            when (val authRes = authClient.authenticate(username, password)) {
+            when (val authRes = authClient.authenticate(normalizedUser, password)) {
                 is AuthResult.Success -> currentSession = authRes.session
                 is AuthResult.InvalidCredentials -> return@withContext Result.failure(Exception(authRes.message))
                 is AuthResult.Error -> return@withContext Result.failure(Exception(authRes.message, authRes.cause))

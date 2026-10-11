@@ -27,6 +27,8 @@ class SakaiNotificationWorker(
         val username = securePrefs.username
         val password = securePrefs.password
 
+        stateManager.checkAccountSwitch(username)
+
         val fetchResult = apiClient.fetchNotifications(username, password)
         if (fetchResult.isFailure) {
             // Transient network failure: retry later with exponential backoff

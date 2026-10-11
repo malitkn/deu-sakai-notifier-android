@@ -13,6 +13,7 @@ class NotificationStateManager(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "deu_sakai_notification_state"
+        private const val KEY_CURRENT_USER = "key_current_username"
         private const val KEY_SEEN_IDS = "key_seen_notification_ids"
         private const val KEY_SEEN_HASHES = "key_seen_content_hashes"
         private const val KEY_IS_FIRST_BOOT = "key_is_first_boot"
@@ -21,6 +22,33 @@ class NotificationStateManager(context: Context) {
 
     val isFirstBoot: Boolean
         get() = prefs.getBoolean(KEY_IS_FIRST_BOOT, true)
+
+    /**
+     * Checks if the active student account has changed.
+     * If changed, resets seen notification history so the new account undergoes
+     * a clean Silent Bootstrap without alert spam or cross-account contamination.
+     */
+    fun checkAccountSwitch(newUsername: String): Boolean {
+        val currentUsername = prefs.getString(KEY_CURRENT_USER, "") ?: ""
+        val normalized = newUsername.trim().lowercase()
+        if (normalized.isNotBlank() && currentUsername.isNotBlank() && currentUsername != normalized) {
+            prefs.edit()
+                .putString(KEY_CURRENT_USER, normalized)
+                .remove(KEY_SEEN_IDS)
+                .remove(KEY_SEEN_HASHES)
+                .putBoolean(KEY_IS_FIRST_BOOT, true)
+                .remove(KEY_RECENT_NOTIFICATIONS)
+                .apply()
+            return true
+        } else if (currentUsername.isBlank() && normalized.isNotBlank()) {
+            prefs.edit().putString(KEY_CURRENT_USER, normalized).apply()
+        }
+        return false
+    }
+
+    fun resetState() {
+        prefs.edit().clear().apply()
+    }
 
     private fun getSeenIds(): MutableSet<String> {
         return prefs.getStringSet(KEY_SEEN_IDS, emptySet())?.toMutableSet() ?: mutableSetOf()

@@ -25,10 +25,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import tr.edu.deu.sakainotifier.data.api.AuthResult
+import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
 import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
+import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
 import tr.edu.deu.sakainotifier.data.model.SakaiNotification
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
+import tr.edu.deu.sakainotifier.notification.NotificationHelper
 import tr.edu.deu.sakainotifier.ui.theme.DeuNavy
 import tr.edu.deu.sakainotifier.ui.theme.DeuSuccess
 import tr.edu.deu.sakainotifier.worker.WorkScheduler
@@ -42,6 +45,7 @@ fun MainScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val authClient = remember { SakaiAuthClient() }
+    val apiClient = remember { SakaiApiClient(authClient) }
 
     var username by remember { mutableStateOf(securePrefs.username) }
     var password by remember { mutableStateOf(securePrefs.password) }
@@ -54,6 +58,7 @@ fun MainScreen(
     var testResultText by remember { mutableStateOf<String?>(null) }
     var testResultSuccess by remember { mutableStateOf(false) }
 
+    var isManualChecking by remember { mutableStateOf(false) }
     var recentNotifications by remember { mutableStateOf(stateManager.getRecentNotifications()) }
 
     Scaffold(
@@ -163,10 +168,11 @@ fun MainScreen(
                             value = username,
                             onValueChange = {
                                 username = it
-                                securePrefs.username = it
+                                val normalized = SakaiUsernameUtils.normalize(it)
+                                securePrefs.username = normalized
                             },
                             label = { Text("Öğrenci Numarası veya E-posta") },
-                            placeholder = { Text("2025282042 veya ...@ogr.deu.edu.tr") },
+                            placeholder = { Text("Örn: 2024123456 veya 2024123456@ogr.deu.edu.tr") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
@@ -195,16 +201,29 @@ fun MainScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    if (username.isBlank() || password.isBlank()) {
+                                    val normalizedUser = SakaiUsernameUtils.normalize(username)
+                                    if (normalizedUser.isBlank() || password.isBlank()) {
                                         Toast.makeText(context, "Lütfen öğrenci no ve şifre girin.", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
+                                    if (username != normalizedUser) {
+                                        username = normalizedUser
+                                    }
+                                    securePrefs.username = normalizedUser
+                                    securePrefs.password = password
+
+                                    val switched = stateManager.checkAccountSwitch(normalizedUser)
+                                    if (switched) {
+                                        apiClient.invalidateSession()
+                                        recentNotifications = emptyList()
+                                    }
+
                                     isTestingConnection = true
                                     testResultText = null
                                     coroutineScope.launch {
-                                        when (val res = authClient.authenticate(username, password)) {
+                                        when (val res = authClient.authenticate(normalizedUser, password)) {
                                             is AuthResult.Success -> {
-                                                testResultText = "✅ Giriş başarılı! Sakai oturumu doğrulandı."
+                                                testResultText = "✅ Giriş başarılı! Sakai oturumu doğrulandı ($normalizedUser)."
                                                 testResultSuccess = true
                                             }
                                             is AuthResult.InvalidCredentials -> {
@@ -300,15 +319,73 @@ fun MainScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Son Bildirimler",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    TextButton(onClick = {
-                        recentNotifications = stateManager.getRecentNotifications()
-                    }) {
-                        Text("Yenile")
+                    Column {
+                        Text(
+                            text = "Son Bildirimler",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Text(
+                            text = if (recentNotifications.isNotEmpty()) "${recentNotifications.size} bildirim listeleniyor" else "Henüz bildirim yok",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val normalizedUser = SakaiUsernameUtils.normalize(username)
+                            if (normalizedUser.isBlank() || password.isBlank()) {
+                                Toast.makeText(context, "Lütfen önce giriş bilgilerinizi girin.", Toast.LENGTH_SHORT).show()
+                                return@OutlinedButton
+                            }
+                            if (username != normalizedUser) {
+                                username = normalizedUser
+                                securePrefs.username = normalizedUser
+                            }
+                            val switched = stateManager.checkAccountSwitch(normalizedUser)
+                            if (switched) {
+                                apiClient.invalidateSession()
+                                recentNotifications = emptyList()
+                            }
+
+                            isManualChecking = true
+                            coroutineScope.launch {
+                                try {
+                                    val fetchRes = apiClient.fetchNotifications(normalizedUser, password)
+                                    if (fetchRes.isSuccess) {
+                                        val allList = fetchRes.getOrDefault(emptyList())
+                                        val newOnes = stateManager.filterNewNotifications(allList)
+                                        if (newOnes.isNotEmpty()) {
+                                            for (notif in newOnes) {
+                                                NotificationHelper.showNotification(context, notif)
+                                            }
+                                            stateManager.markProcessed(newOnes)
+                                            Toast.makeText(context, "${newOnes.size} yeni duyuru bulundu!", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "Yeni duyuru yok. Tüm duyurular güncel.", Toast.LENGTH_SHORT).show()
+                                        }
+                                        recentNotifications = stateManager.getRecentNotifications()
+                                    } else {
+                                        Toast.makeText(context, "Sakai bağlantı hatası: ${fetchRes.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                } finally {
+                                    isManualChecking = false
+                                }
+                            }
+                        },
+                        enabled = !isManualChecking
+                    ) {
+                        if (isManualChecking) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Kontrol ediliyor...", fontSize = 12.sp)
+                        } else {
+                            Text("Şimdi Kontrol Et 🔄", fontSize = 12.sp)
+                        }
                     }
                 }
             }
