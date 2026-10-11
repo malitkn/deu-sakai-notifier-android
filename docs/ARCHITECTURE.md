@@ -104,9 +104,9 @@ deu-sakai-notifier-android/
 - [x] 3.3: `BootReceiver.kt` ile telefon yeniden başladığında arka plan servisini ayağa kaldıran alıcıyı kodla
 
 ### Sprint 4: Jetpack Compose User Interface & Configuration
-- [ ] 4.1: `MainActivity.kt` ve Material 3 modern tasarım temasını (`Theme.kt`) kur
-- [ ] 4.2: Öğrenci no, şifre girişi, "Girişi Test Et" butonu ve minimum 20 dk sınırlandırılmış aralık seçicisini içeren ana ekranı (`MainScreen.kt`) kodla
-- [ ] 4.3: Son bildirimler listesi ve servis başlat/durdur toggle kontrolünü arayüze entegre et
+- [x] 4.1: `MainActivity.kt` ve Material 3 modern tasarım temasını (`Theme.kt`) kur
+- [x] 4.2: Öğrenci no, şifre girişi, "Girişi Test Et" butonu ve minimum 20 dk sınırlandırılmış aralık seçicisini içeren ana ekranı (`MainScreen.kt`) kodla
+- [x] 4.3: Son bildirimler listesi ve servis başlat/durdur toggle kontrolünü arayüze entegre et
 
 ### Sprint 5: Universal APK Build Pipeline & GitHub Actions Release CI
 - [ ] 5.1: `AndroidManifest.xml` izinlerini (`INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`) ve bileşenleri yapılandır
