@@ -236,49 +236,93 @@ class NotificationStateManager(context: Context) {
      * Deduplicates per (accountUsername + sakaiId/contentHash) and sorts by publishedAt descending.
      */
     fun getAllRecentNotifications(accounts: List<String>): List<SakaiNotification> {
-        if (accounts.isEmpty()) {
-            return getRecentNotifications()
-        }
         val all = mutableListOf<SakaiNotification>()
         val seenSignatures = mutableSetOf<String>()
 
+        val primaryUser = accounts.firstOrNull()?.trim()?.lowercase().orEmpty()
+
         for (acc in accounts) {
             val norm = acc.trim().lowercase()
-            val raw = prefs.getString("${KEY_RECENT_NOTIFICATIONS}_$norm", null)
-            if (!raw.isNullOrBlank()) {
-                try {
-                    val array = JSONArray(raw)
-                    for (i in 0 until array.length()) {
-                        val obj = array.optJSONObject(i) ?: continue
-                        val notifUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: norm
-                        val id = obj.optString("id")
-                        val hash = obj.optString("hash")
-                        val primaryId = if (id.isNotBlank()) id else hash
-                        val signature = "${notifUser}_$primaryId"
-                        if (seenSignatures.add(signature)) {
-                            all.add(
-                                SakaiNotification(
-                                    sakaiId = id,
-                                    contentHash = hash,
-                                    title = obj.optString("title", "Bildirim"),
-                                    body = obj.optString("body").takeIf { it.isNotBlank() },
-                                    siteTitle = obj.optString("siteTitle").takeIf { it.isNotBlank() },
-                                    url = obj.optString("url").takeIf { it.isNotBlank() },
-                                    publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
-                                    rawJson = obj.toString(),
-                                    accountUsername = notifUser
+            val shortUser = norm.substringBefore("@")
+
+            // Check both full normalized username and short student ID keys
+            val candidateKeys = listOf(
+                "${KEY_RECENT_NOTIFICATIONS}_$norm",
+                "${KEY_RECENT_NOTIFICATIONS}_$shortUser"
+            ).distinct()
+
+            for (key in candidateKeys) {
+                val raw = prefs.getString(key, null)
+                if (!raw.isNullOrBlank()) {
+                    try {
+                        val array = JSONArray(raw)
+                        for (i in 0 until array.length()) {
+                            val obj = array.optJSONObject(i) ?: continue
+                            val notifUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: norm
+                            val id = obj.optString("id")
+                            val hash = obj.optString("hash")
+                            val primaryId = if (id.isNotBlank()) id else hash
+                            val signature = "${notifUser.substringBefore("@")}_$primaryId"
+                            if (seenSignatures.add(signature)) {
+                                all.add(
+                                    SakaiNotification(
+                                        sakaiId = id,
+                                        contentHash = hash,
+                                        title = obj.optString("title", "Bildirim"),
+                                        body = obj.optString("body").takeIf { it.isNotBlank() },
+                                        siteTitle = obj.optString("siteTitle").takeIf { it.isNotBlank() },
+                                        url = obj.optString("url").takeIf { it.isNotBlank() },
+                                        publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
+                                        rawJson = obj.toString(),
+                                        accountUsername = notifUser
+                                    )
                                 )
-                            )
+                            }
                         }
+                    } catch (e: Exception) {
+                        e.printStackTrace()
                     }
-                } catch (e: Exception) {
-                    e.printStackTrace()
                 }
             }
         }
 
+        // Also check legacy un-suffixed key if any notifications remain there
+        val legacyRaw = prefs.getString(KEY_RECENT_NOTIFICATIONS, null)
+        if (!legacyRaw.isNullOrBlank()) {
+            try {
+                val array = JSONArray(legacyRaw)
+                for (i in 0 until array.length()) {
+                    val obj = array.optJSONObject(i) ?: continue
+                    val notifUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: primaryUser
+                    val id = obj.optString("id")
+                    val hash = obj.optString("hash")
+                    val primaryId = if (id.isNotBlank()) id else hash
+                    val signature = "${notifUser.substringBefore("@")}_$primaryId"
+                    if (seenSignatures.add(signature)) {
+                        all.add(
+                            SakaiNotification(
+                                sakaiId = id,
+                                contentHash = hash,
+                                title = obj.optString("title", "Bildirim"),
+                                body = obj.optString("body").takeIf { it.isNotBlank() },
+                                siteTitle = obj.optString("siteTitle").takeIf { it.isNotBlank() },
+                                url = obj.optString("url").takeIf { it.isNotBlank() },
+                                publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
+                                rawJson = obj.toString(),
+                                accountUsername = notifUser
+                            )
+                        )
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         if (all.isEmpty()) {
-            return getRecentNotifications()
+            return getRecentNotifications().map {
+                if (it.accountUsername.isNullOrBlank()) it.copy(accountUsername = primaryUser) else it
+            }
         }
 
         return all.sortedByDescending { notif ->

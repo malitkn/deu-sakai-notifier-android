@@ -303,6 +303,16 @@ fun MainScreen(
                                                 inputPassword = ""
                                                 accountFeedbackText = "✅ Giriş doğrulandı! ${acc.shortUsername} hesabı başarıyla kaydedildi."
                                                 accountFeedbackSuccess = true
+
+                                                // Fetch and populate initial recent notifications for this account
+                                                val initFetch = apiClient.fetchNotifications(normalizedUser, inputPassword)
+                                                if (initFetch.isSuccess) {
+                                                    val list = initFetch.getOrDefault(emptyList())
+                                                    val tagged = list.map { it.copy(accountUsername = normalizedUser) }
+                                                    stateManager.filterNewNotifications(tagged)
+                                                    stateManager.markProcessed(tagged.take(15))
+                                                }
+
                                                 recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                                             }
                                             is AuthResult.InvalidCredentials -> {
@@ -450,6 +460,9 @@ fun MainScreen(
                                                 totalNew += newOnes.size
                                                 summaries.add("${acc.shortUsername}: ${newOnes.size} yeni duyuru")
                                             } else {
+                                                if (stateManager.getRecentNotifications().isEmpty() && tagged.isNotEmpty()) {
+                                                    stateManager.markProcessed(tagged.take(15))
+                                                }
                                                 summaries.add("${acc.shortUsername}: güncel")
                                             }
                                         } else {
@@ -524,7 +537,10 @@ fun MainScreen(
                 }
             } else {
                 items(recentNotifications) { notif ->
-                    NotificationItemCard(notif = notif) { url ->
+                    NotificationItemCard(
+                        notif = notif,
+                        registeredAccounts = registeredAccounts
+                    ) { url ->
                         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                         context.startActivity(intent)
                     }
@@ -534,66 +550,135 @@ fun MainScreen(
     }
 }
 
+private data class AccountBadgeTheme(
+    val badgeBg: Color,
+    val badgeText: Color,
+    val cardBorder: Color
+)
+
 @Composable
 fun NotificationItemCard(
     notif: SakaiNotification,
+    registeredAccounts: List<SakaiAccount>,
     onOpenUrl: (String) -> Unit
 ) {
+    val rawUsername = notif.accountUsername.orEmpty()
+    val shortUser = if (rawUsername.isNotBlank()) {
+        rawUsername.substringBefore("@").trim()
+    } else {
+        registeredAccounts.firstOrNull()?.shortUsername ?: "Öğrenci"
+    }
+
+    val accountIndex = registeredAccounts.indexOfFirst {
+        it.shortUsername.equals(shortUser, ignoreCase = true) ||
+        it.username.equals(rawUsername, ignoreCase = true)
+    }.let { if (it >= 0) it else 0 }
+
+    val themes = listOf(
+        // Account 1: Blue / Navy theme
+        AccountBadgeTheme(
+            badgeBg = Color(0xFFDBEAFE),
+            badgeText = Color(0xFF1E40AF),
+            cardBorder = Color(0xFF3B82F6)
+        ),
+        // Account 2: Purple / Violet theme
+        AccountBadgeTheme(
+            badgeBg = Color(0xFFF3E8FF),
+            badgeText = Color(0xFF6B21A8),
+            cardBorder = Color(0xFFA855F7)
+        ),
+        // Account 3: Teal / Emerald theme
+        AccountBadgeTheme(
+            badgeBg = Color(0xFFD1FAE5),
+            badgeText = Color(0xFF065F46),
+            cardBorder = Color(0xFF10B981)
+        ),
+        // Account 4: Amber / Warm theme
+        AccountBadgeTheme(
+            badgeBg = Color(0xFFFEF3C7),
+            badgeText = Color(0xFF92400E),
+            cardBorder = Color(0xFFF59E0B)
+        )
+    )
+
+    val currentTheme = themes[accountIndex % themes.size]
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp)),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        border = BorderStroke(1.2.dp, currentTheme.cardBorder.copy(alpha = 0.45f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // Header Row: Prominent Account Badge & Date
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                notif.accountUsername?.substringBefore("@")?.takeIf { it.isNotBlank() }?.let { shortUser ->
-                    Surface(
-                        color = DeuNavy.copy(alpha = 0.12f),
-                        shape = RoundedCornerShape(4.dp)
+                Surface(
+                    color = currentTheme.badgeBg,
+                    shape = RoundedCornerShape(6.dp),
+                    border = BorderStroke(1.dp, currentTheme.cardBorder.copy(alpha = 0.7f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                     ) {
+                        Text("🎓", fontSize = 12.sp)
                         Text(
-                            text = "👤 $shortUser",
-                            fontSize = 11.sp,
+                            text = "Öğrenci: $shortUser",
+                            fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = DeuNavy,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            color = currentTheme.badgeText
                         )
                     }
                 }
-                notif.siteTitle?.let { site ->
-                    Surface(
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        shape = RoundedCornerShape(4.dp)
-                    ) {
-                        Text(
-                            text = site,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                        )
-                    }
+
+                notif.publishedAt?.let { dateStr ->
+                    Text(
+                        text = "📅 ${SakaiNotification.formatPublishedDate(dateStr) ?: dateStr}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                    )
                 }
             }
+
+            // Course Name
+            notif.siteTitle?.let { site ->
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Text(
+                        text = "📚 $site",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp)
+                    )
+                }
+            }
+
+            // Title
             Text(
                 text = notif.title,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp,
                 color = MaterialTheme.colorScheme.onSurface
             )
+
+            // Body
             notif.body?.let { bodyText ->
                 Text(
                     text = bodyText,
@@ -603,19 +688,13 @@ fun NotificationItemCard(
                     maxLines = 4
                 )
             }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                notif.publishedAt?.let { dateStr ->
-                    Text(
-                        text = "📅 ${SakaiNotification.formatPublishedDate(dateStr) ?: dateStr}",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
-                    )
-                }
-                notif.url?.let { link ->
+
+            // Link Action
+            notif.url?.let { link ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
                     Text(
                         text = "Duyuruyu Aç ↗",
                         fontSize = 12.sp,
