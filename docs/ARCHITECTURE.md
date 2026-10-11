@@ -99,9 +99,9 @@ deu-sakai-notifier-android/
 - [x] 2.2: `NotificationStateManager.kt` ile görülen bildirim kimliklerini ve "Silent Bootstrap" ilk başlatma mantığını kodla
 
 ### Sprint 3: Background Worker & Native Notification Manager (WorkManager)
-- [ ] 3.1: `NotificationHelper.kt` ile Android sistem bildirim kanalı (`NotificationChannel`) ve push uyarılarını kodla
-- [ ] 3.2: `SakaiNotificationWorker.kt` CoroutineWorker sınıfını yaz ve WorkManager planlayıcısını (`WorkScheduler.kt`) kodla
-- [ ] 3.3: `BootReceiver.kt` ile telefon yeniden başladığında arka plan servisini ayağa kaldıran alıcıyı kodla
+- [x] 3.1: `NotificationHelper.kt` ile Android sistem bildirim kanalı (`NotificationChannel`) ve push uyarılarını kodla
+- [x] 3.2: `SakaiNotificationWorker.kt` CoroutineWorker sınıfını yaz ve WorkManager planlayıcısını (`WorkScheduler.kt`) kodla
+- [x] 3.3: `BootReceiver.kt` ile telefon yeniden başladığında arka plan servisini ayağa kaldıran alıcıyı kodla
 
 ### Sprint 4: Jetpack Compose User Interface & Configuration
 - [ ] 4.1: `MainActivity.kt` ve Material 3 modern tasarım temasını (`Theme.kt`) kur
