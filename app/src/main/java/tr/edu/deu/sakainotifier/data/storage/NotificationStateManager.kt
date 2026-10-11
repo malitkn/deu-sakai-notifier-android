@@ -20,42 +20,82 @@ class NotificationStateManager(context: Context) {
         const val KEY_RECENT_NOTIFICATIONS = "key_recent_notifications_json"
     }
 
+    var currentUser: String = prefs.getString(KEY_CURRENT_USER, "") ?: ""
+        private set
+
+    init {
+        if (currentUser.isNotBlank()) {
+            migrateLegacyKeysIfNeeded(currentUser)
+        }
+    }
+
+    private fun getAccountKey(baseKey: String): String {
+        return if (currentUser.isNotBlank()) {
+            "${baseKey}_${currentUser}"
+        } else {
+            baseKey
+        }
+    }
+
+    private fun migrateLegacyKeysIfNeeded(user: String) {
+        val userFirstBootKey = "${KEY_IS_FIRST_BOOT}_$user"
+        if (!prefs.contains(userFirstBootKey) && prefs.contains(KEY_IS_FIRST_BOOT)) {
+            val legacyFirstBoot = prefs.getBoolean(KEY_IS_FIRST_BOOT, true)
+            val legacyIds = prefs.getStringSet(KEY_SEEN_IDS, emptySet())
+            val legacyHashes = prefs.getStringSet(KEY_SEEN_HASHES, emptySet())
+            val legacyRecent = prefs.getString(KEY_RECENT_NOTIFICATIONS, "[]")
+
+            prefs.edit()
+                .putBoolean(userFirstBootKey, legacyFirstBoot)
+                .putStringSet("${KEY_SEEN_IDS}_$user", legacyIds)
+                .putStringSet("${KEY_SEEN_HASHES}_$user", legacyHashes)
+                .putString("${KEY_RECENT_NOTIFICATIONS}_$user", legacyRecent)
+                .apply()
+        }
+    }
+
     val isFirstBoot: Boolean
-        get() = prefs.getBoolean(KEY_IS_FIRST_BOOT, true)
+        get() = prefs.getBoolean(getAccountKey(KEY_IS_FIRST_BOOT), true)
 
     /**
      * Checks if the active student account has changed.
-     * If changed, resets seen notification history so the new account undergoes
-     * a clean Silent Bootstrap without alert spam or cross-account contamination.
+     * Switches the active namespace to the new student account without destroying
+     * the previous account's seen history or cache.
      */
     fun checkAccountSwitch(newUsername: String): Boolean {
-        val currentUsername = prefs.getString(KEY_CURRENT_USER, "") ?: ""
         val normalized = newUsername.trim().lowercase()
-        if (normalized.isNotBlank() && currentUsername.isNotBlank() && currentUsername != normalized) {
-            prefs.edit()
-                .putString(KEY_CURRENT_USER, normalized)
-                .remove(KEY_SEEN_IDS)
-                .remove(KEY_SEEN_HASHES)
-                .putBoolean(KEY_IS_FIRST_BOOT, true)
-                .remove(KEY_RECENT_NOTIFICATIONS)
-                .apply()
+        if (normalized.isNotBlank() && currentUser != normalized) {
+            currentUser = normalized
+            migrateLegacyKeysIfNeeded(normalized)
+            prefs.edit().putString(KEY_CURRENT_USER, normalized).apply()
             return true
-        } else if (currentUsername.isBlank() && normalized.isNotBlank()) {
+        } else if (currentUser.isBlank() && normalized.isNotBlank()) {
+            currentUser = normalized
+            migrateLegacyKeysIfNeeded(normalized)
             prefs.edit().putString(KEY_CURRENT_USER, normalized).apply()
         }
         return false
     }
 
     fun resetState() {
-        prefs.edit().clear().apply()
+        if (currentUser.isNotBlank()) {
+            prefs.edit()
+                .remove(getAccountKey(KEY_SEEN_IDS))
+                .remove(getAccountKey(KEY_SEEN_HASHES))
+                .remove(getAccountKey(KEY_IS_FIRST_BOOT))
+                .remove(getAccountKey(KEY_RECENT_NOTIFICATIONS))
+                .apply()
+        } else {
+            prefs.edit().clear().apply()
+        }
     }
 
     private fun getSeenIds(): MutableSet<String> {
-        return prefs.getStringSet(KEY_SEEN_IDS, emptySet())?.toMutableSet() ?: mutableSetOf()
+        return prefs.getStringSet(getAccountKey(KEY_SEEN_IDS), emptySet())?.toMutableSet() ?: mutableSetOf()
     }
 
     private fun getSeenHashes(): MutableSet<String> {
-        return prefs.getStringSet(KEY_SEEN_HASHES, emptySet())?.toMutableSet() ?: mutableSetOf()
+        return prefs.getStringSet(getAccountKey(KEY_SEEN_HASHES), emptySet())?.toMutableSet() ?: mutableSetOf()
     }
 
     /**
@@ -72,9 +112,9 @@ class NotificationStateManager(context: Context) {
         }
 
         prefs.edit()
-            .putStringSet(KEY_SEEN_IDS, seenIds)
-            .putStringSet(KEY_SEEN_HASHES, seenHashes)
-            .putBoolean(KEY_IS_FIRST_BOOT, false)
+            .putStringSet(getAccountKey(KEY_SEEN_IDS), seenIds)
+            .putStringSet(getAccountKey(KEY_SEEN_HASHES), seenHashes)
+            .putBoolean(getAccountKey(KEY_IS_FIRST_BOOT), false)
             .apply()
 
         saveRecentNotifications(notifications.take(20))
@@ -82,6 +122,7 @@ class NotificationStateManager(context: Context) {
 
     /**
      * Filters incoming notifications to only return items that have never been seen.
+     * On first boot of an account, alerts up to 5 active items and marks all as seen.
      */
     fun filterNewNotifications(notifications: List<SakaiNotification>): List<SakaiNotification> {
         if (isFirstBoot) {
@@ -93,11 +134,11 @@ class NotificationStateManager(context: Context) {
                 seenHashes.add(notif.contentHash)
             }
 
-            // Mark state as initialized
+            // Mark state as initialized for this account
             prefs.edit()
-                .putStringSet(KEY_SEEN_IDS, seenIds)
-                .putStringSet(KEY_SEEN_HASHES, seenHashes)
-                .putBoolean(KEY_IS_FIRST_BOOT, false)
+                .putStringSet(getAccountKey(KEY_SEEN_IDS), seenIds)
+                .putStringSet(getAccountKey(KEY_SEEN_HASHES), seenHashes)
+                .putBoolean(getAccountKey(KEY_IS_FIRST_BOOT), false)
                 .apply()
 
             // Initial installation / account switch: notify user about active announcements (up to 5)
@@ -114,7 +155,7 @@ class NotificationStateManager(context: Context) {
     }
 
     /**
-     * Marks notifications as processed.
+     * Marks notifications as processed for current account.
      */
     fun markProcessed(notifications: List<SakaiNotification>) {
         if (notifications.isEmpty()) return
@@ -128,8 +169,8 @@ class NotificationStateManager(context: Context) {
         }
 
         prefs.edit()
-            .putStringSet(KEY_SEEN_IDS, seenIds)
-            .putStringSet(KEY_SEEN_HASHES, seenHashes)
+            .putStringSet(getAccountKey(KEY_SEEN_IDS), seenIds)
+            .putStringSet(getAccountKey(KEY_SEEN_HASHES), seenHashes)
             .apply()
 
         // Prepend new notifications to recent cache with strict deduplication
@@ -156,11 +197,11 @@ class NotificationStateManager(context: Context) {
             obj.put("publishedAt", item.publishedAt)
             array.put(obj)
         }
-        prefs.edit().putString(KEY_RECENT_NOTIFICATIONS, array.toString()).apply()
+        prefs.edit().putString(getAccountKey(KEY_RECENT_NOTIFICATIONS), array.toString()).apply()
     }
 
     fun getRecentNotifications(): List<SakaiNotification> {
-        val raw = prefs.getString(KEY_RECENT_NOTIFICATIONS, "[]") ?: "[]"
+        val raw = prefs.getString(getAccountKey(KEY_RECENT_NOTIFICATIONS), "[]") ?: "[]"
         val list = mutableListOf<SakaiNotification>()
         try {
             val array = JSONArray(raw)

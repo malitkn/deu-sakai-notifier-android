@@ -33,6 +33,9 @@ class MainActivity : ComponentActivity() {
 
         val securePrefs = SecurePreferencesManager(this)
         val stateManager = NotificationStateManager(this)
+        if (securePrefs.hasCredentials()) {
+            stateManager.checkAccountSwitch(securePrefs.username)
+        }
 
         // Restore work scheduler if monitoring was previously active
         if (securePrefs.isMonitoringActive && securePrefs.hasCredentials()) {

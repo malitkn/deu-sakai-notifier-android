@@ -67,7 +67,7 @@ fun MainScreen(
     // Auto-refresh notifications list when background worker updates SharedPreferences
     DisposableEffect(Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == NotificationStateManager.KEY_RECENT_NOTIFICATIONS) {
+            if (key != null && key.startsWith(NotificationStateManager.KEY_RECENT_NOTIFICATIONS)) {
                 recentNotifications = stateManager.getRecentNotifications()
             }
         }
@@ -231,7 +231,7 @@ fun MainScreen(
                                     val switched = stateManager.checkAccountSwitch(normalizedUser)
                                     if (switched) {
                                         apiClient.invalidateSession()
-                                        recentNotifications = emptyList()
+                                        recentNotifications = stateManager.getRecentNotifications()
                                     }
 
                                     isTestingConnection = true
@@ -369,7 +369,7 @@ fun MainScreen(
                             val switched = stateManager.checkAccountSwitch(normalizedUser)
                             if (switched) {
                                 apiClient.invalidateSession()
-                                recentNotifications = emptyList()
+                                recentNotifications = stateManager.getRecentNotifications()
                             }
 
                             isManualChecking = true
