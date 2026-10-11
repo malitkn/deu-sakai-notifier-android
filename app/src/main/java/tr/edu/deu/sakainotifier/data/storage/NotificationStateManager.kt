@@ -195,6 +195,7 @@ class NotificationStateManager(context: Context) {
             obj.put("siteTitle", item.siteTitle)
             obj.put("url", item.url)
             obj.put("publishedAt", item.publishedAt)
+            obj.put("accountUsername", item.accountUsername ?: currentUser)
             array.put(obj)
         }
         prefs.edit().putString(getAccountKey(KEY_RECENT_NOTIFICATIONS), array.toString()).apply()
@@ -207,6 +208,7 @@ class NotificationStateManager(context: Context) {
             val array = JSONArray(raw)
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
+                val accUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: currentUser
                 list.add(
                     SakaiNotification(
                         sakaiId = obj.optString("id"),
@@ -216,7 +218,8 @@ class NotificationStateManager(context: Context) {
                         siteTitle = obj.optString("siteTitle").takeIf { it.isNotBlank() },
                         url = obj.optString("url").takeIf { it.isNotBlank() },
                         publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
-                        rawJson = obj.toString()
+                        rawJson = obj.toString(),
+                        accountUsername = accUser
                     )
                 )
             }
@@ -225,6 +228,61 @@ class NotificationStateManager(context: Context) {
         }
         return list.distinctBy {
             if (it.sakaiId.isNotBlank()) it.sakaiId else it.contentHash
+        }
+    }
+
+    /**
+     * Aggregates recent notifications across all registered accounts.
+     * Deduplicates per (accountUsername + sakaiId/contentHash) and sorts by publishedAt descending.
+     */
+    fun getAllRecentNotifications(accounts: List<String>): List<SakaiNotification> {
+        if (accounts.isEmpty()) {
+            return getRecentNotifications()
+        }
+        val all = mutableListOf<SakaiNotification>()
+        val seenSignatures = mutableSetOf<String>()
+
+        for (acc in accounts) {
+            val norm = acc.trim().lowercase()
+            val raw = prefs.getString("${KEY_RECENT_NOTIFICATIONS}_$norm", null)
+            if (!raw.isNullOrBlank()) {
+                try {
+                    val array = JSONArray(raw)
+                    for (i in 0 until array.length()) {
+                        val obj = array.optJSONObject(i) ?: continue
+                        val notifUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: norm
+                        val id = obj.optString("id")
+                        val hash = obj.optString("hash")
+                        val primaryId = if (id.isNotBlank()) id else hash
+                        val signature = "${notifUser}_$primaryId"
+                        if (seenSignatures.add(signature)) {
+                            all.add(
+                                SakaiNotification(
+                                    sakaiId = id,
+                                    contentHash = hash,
+                                    title = obj.optString("title", "Bildirim"),
+                                    body = obj.optString("body").takeIf { it.isNotBlank() },
+                                    siteTitle = obj.optString("siteTitle").takeIf { it.isNotBlank() },
+                                    url = obj.optString("url").takeIf { it.isNotBlank() },
+                                    publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
+                                    rawJson = obj.toString(),
+                                    accountUsername = notifUser
+                                )
+                            )
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+
+        if (all.isEmpty()) {
+            return getRecentNotifications()
+        }
+
+        return all.sortedByDescending { notif ->
+            SakaiNotification.parsePublishedMillis(notif.publishedAt)
         }
     }
 

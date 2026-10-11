@@ -24,30 +24,52 @@ class SakaiNotificationWorker(
             return@withContext Result.success()
         }
 
-        val username = securePrefs.username
-        val password = securePrefs.password
-
-        stateManager.checkAccountSwitch(username)
-
-        val fetchResult = apiClient.fetchNotifications(username, password)
-        if (fetchResult.isFailure) {
-            // Transient network failure: retry later with exponential backoff
-            return@withContext Result.retry()
+        val accounts = securePrefs.getAccounts()
+        if (accounts.isEmpty()) {
+            return@withContext Result.success()
         }
 
-        val allNotifications = fetchResult.getOrDefault(emptyList())
+        var anyNetworkFailure = false
 
-        // Filter out previously seen notifications and handle Silent Bootstrap
-        val newNotifications = stateManager.filterNewNotifications(allNotifications)
+        for (account in accounts) {
+            try {
+                stateManager.checkAccountSwitch(account.username)
 
-        if (newNotifications.isNotEmpty()) {
-            for (notif in newNotifications) {
-                NotificationHelper.showNotification(context, notif)
+                val fetchResult = apiClient.fetchNotifications(account.username, account.password)
+                if (fetchResult.isFailure) {
+                    val ex = fetchResult.exceptionOrNull()
+                    if (ex is java.io.IOException) {
+                        anyNetworkFailure = true
+                    }
+                    continue
+                }
+
+                val allNotifications = fetchResult.getOrDefault(emptyList())
+                val taggedNotifications = allNotifications.map { it.copy(accountUsername = account.username) }
+
+                // Filter out previously seen notifications and handle Silent Bootstrap for this account
+                val newNotifications = stateManager.filterNewNotifications(taggedNotifications)
+
+                if (newNotifications.isNotEmpty()) {
+                    for (notif in newNotifications) {
+                        NotificationHelper.showNotification(context, notif, account.username)
+                    }
+                    stateManager.markProcessed(newNotifications)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                if (e is java.io.IOException) {
+                    anyNetworkFailure = true
+                }
             }
-            stateManager.markProcessed(newNotifications)
         }
 
         securePrefs.lastCheckTimestamp = System.currentTimeMillis()
-        Result.success()
+
+        if (anyNetworkFailure) {
+            Result.retry()
+        } else {
+            Result.success()
+        }
     }
 }

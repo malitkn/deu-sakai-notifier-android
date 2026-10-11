@@ -18,14 +18,15 @@ data class SakaiNotification(
     val siteTitle: String?,
     val url: String?,
     val publishedAt: String?,
-    val rawJson: String
+    val rawJson: String,
+    val accountUsername: String? = null
 ) {
     companion object {
         /**
          * Resolves a SakaiNotification from arbitrary JSON structures.
          * Guarantees deterministic SHA-256 hash and fallback ID resolution.
          */
-        fun fromJsonObject(json: JSONObject): SakaiNotification {
+        fun fromJsonObject(json: JSONObject, accountUsername: String? = null): SakaiNotification {
             val rawString = json.toString()
             val contentHash = sha256(rawString)
 
@@ -92,7 +93,8 @@ data class SakaiNotification(
                 siteTitle = siteTitle?.trim(),
                 url = url?.trim(),
                 publishedAt = publishedAt?.trim(),
-                rawJson = rawString
+                rawJson = rawString,
+                accountUsername = accountUsername
             )
         }
 
@@ -148,6 +150,38 @@ data class SakaiNotification(
             }
 
             return rawStr
+        }
+
+        fun parsePublishedMillis(rawVal: Any?): Long {
+            if (rawVal == null || rawVal == JSONObject.NULL) return 0L
+            val rawStr = rawVal.toString().trim()
+            if (rawStr.isEmpty() || rawStr.equals("null", ignoreCase = true)) return 0L
+
+            val numericTs = rawStr.toDoubleOrNull()
+            if (numericTs != null && numericTs > 1e7) {
+                return if (numericTs > 1e11) numericTs.toLong() else (numericTs * 1000).toLong()
+            }
+
+            if (rawStr.contains("T") || (rawStr.length >= 19 && rawStr.getOrNull(4) == '-' && rawStr.getOrNull(7) == '-')) {
+                val patterns = arrayOf(
+                    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+                    "yyyy-MM-dd'T'HH:mm:ssXXX",
+                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                    "yyyy-MM-dd'T'HH:mm:ss",
+                    "yyyy-MM-dd HH:mm:ss"
+                )
+                for (pattern in patterns) {
+                    try {
+                        val parser = SimpleDateFormat(pattern, Locale.ROOT)
+                        val parsedDate = parser.parse(rawStr)
+                        if (parsedDate != null) {
+                            return parsedDate.time
+                        }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+            return 0L
         }
 
         private fun sha256(input: String): String {

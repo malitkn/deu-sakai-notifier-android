@@ -32,7 +32,11 @@ object NotificationHelper {
         }
     }
 
-    fun showNotification(context: Context, notification: SakaiNotification) {
+    fun showNotification(
+        context: Context,
+        notification: SakaiNotification,
+        accountUsername: String? = notification.accountUsername
+    ) {
         createNotificationChannel(context)
 
         // PendingIntent to open browser URL if available, else open MainActivity
@@ -44,17 +48,26 @@ object NotificationHelper {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
 
+        val accountPrefix = (accountUsername ?: notification.accountUsername)
+            ?.substringBefore("@")
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+
+        val uniqueId = "${accountPrefix.orEmpty()}_${notification.sakaiId}".hashCode()
+
         val pendingIntent = PendingIntent.getActivity(
             context,
-            notification.sakaiId.hashCode(),
+            uniqueId,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        // Format: "öğrenci numarası: [Ders] Başlık"
+        val userPrefix = if (!accountPrefix.isNullOrBlank()) "$accountPrefix: " else ""
         val displayTitle = if (!notification.siteTitle.isNullOrBlank()) {
-            "📚 [${notification.siteTitle}] ${notification.title}"
+            "${userPrefix}[${notification.siteTitle}] ${notification.title}"
         } else {
-            "📌 ${notification.title}"
+            "${userPrefix}${notification.title}"
         }
 
         val displayBody = notification.body ?: "Yeni bir DEU Sakai duyurusu yayınlandı."

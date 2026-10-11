@@ -29,6 +29,7 @@ import tr.edu.deu.sakainotifier.data.api.AuthResult
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
 import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
 import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
+import tr.edu.deu.sakainotifier.data.model.SakaiAccount
 import tr.edu.deu.sakainotifier.data.model.SakaiNotification
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
@@ -48,27 +49,30 @@ fun MainScreen(
     val authClient = remember { SakaiAuthClient() }
     val apiClient = remember { SakaiApiClient(authClient) }
 
-    var username by remember { mutableStateOf(securePrefs.username) }
-    var password by remember { mutableStateOf(securePrefs.password) }
+    var registeredAccounts by remember { mutableStateOf(securePrefs.getAccounts()) }
+    var inputUsername by remember { mutableStateOf("") }
+    var inputPassword by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
     var isMonitoringActive by remember { mutableStateOf(securePrefs.isMonitoringActive) }
     var selectedInterval by remember { mutableStateOf(securePrefs.pollIntervalMinutes) }
 
-    var isTestingConnection by remember { mutableStateOf(false) }
-    var testResultText by remember { mutableStateOf<String?>(null) }
-    var testResultSuccess by remember { mutableStateOf(false) }
+    var isAddingAccount by remember { mutableStateOf(false) }
+    var accountFeedbackText by remember { mutableStateOf<String?>(null) }
+    var accountFeedbackSuccess by remember { mutableStateOf(false) }
 
     var isManualChecking by remember { mutableStateOf(false) }
     var manualCheckResultText by remember { mutableStateOf<String?>(null) }
     var manualCheckSuccess by remember { mutableStateOf(false) }
-    var recentNotifications by remember { mutableStateOf(stateManager.getRecentNotifications()) }
+    var recentNotifications by remember {
+        mutableStateOf(stateManager.getAllRecentNotifications(securePrefs.getAccounts().map { it.username }))
+    }
 
     // Auto-refresh notifications list when background worker updates SharedPreferences
     DisposableEffect(Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key != null && key.startsWith(NotificationStateManager.KEY_RECENT_NOTIFICATIONS)) {
-                recentNotifications = stateManager.getRecentNotifications()
+                recentNotifications = stateManager.getAllRecentNotifications(securePrefs.getAccounts().map { it.username })
             }
         }
         stateManager.registerChangeListener(listener)
@@ -131,7 +135,7 @@ fun MainScreen(
                             )
                             Text(
                                 text = if (isMonitoringActive)
-                                    "Arka planda her $selectedInterval dakikada bir kontrol ediliyor."
+                                    "Kayıtlı tüm hesaplar her $selectedInterval dakikada bir kontrol ediliyor."
                                 else
                                     "Yeni duyurular için takibi başlatın.",
                                 fontSize = 13.sp,
@@ -141,8 +145,8 @@ fun MainScreen(
                         Switch(
                             checked = isMonitoringActive,
                             onCheckedChange = { active ->
-                                if (active && !securePrefs.hasCredentials()) {
-                                    Toast.makeText(context, "Lütfen önce giriş bilgilerinizi kaydedin.", Toast.LENGTH_SHORT).show()
+                                if (active && registeredAccounts.isEmpty()) {
+                                    Toast.makeText(context, "Lütfen önce en az bir öğrenci hesabı ekleyin.", Toast.LENGTH_SHORT).show()
                                     return@Switch
                                 }
                                 isMonitoringActive = active
@@ -160,7 +164,7 @@ fun MainScreen(
                 }
             }
 
-            // 2. Credentials Card
+            // 2. Multi-Account Management Card
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(
@@ -170,23 +174,89 @@ fun MainScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "Öğrenci Giriş Bilgileri",
+                            text = "Kayıtlı Öğrenci Hesapları (${registeredAccounts.size})",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
                         Text(
-                            text = "Bilgileriniz sadece cihazınızda şifrelenerek saklanır, harici sunucuya gitmez.",
+                            text = "Eklenen tüm hesaplar arka planda birlikte taranır. Bildirimler öğrenci numarası ile etiketlenir.",
                             fontSize = 12.sp,
                             color = Color.Gray
                         )
 
+                        // Registered accounts list
+                        if (registeredAccounts.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                registeredAccounts.forEach { acc ->
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        ),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Surface(
+                                                    color = DeuNavy.copy(alpha = 0.12f),
+                                                    shape = RoundedCornerShape(6.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "👤",
+                                                        fontSize = 14.sp,
+                                                        modifier = Modifier.padding(6.dp)
+                                                    )
+                                                }
+                                                Column {
+                                                    Text(
+                                                        text = acc.shortUsername,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = acc.username,
+                                                        fontSize = 11.sp,
+                                                        color = Color.Gray
+                                                    )
+                                                }
+                                            }
+                                            IconButton(
+                                                onClick = {
+                                                    securePrefs.removeAccount(acc.username)
+                                                    registeredAccounts = securePrefs.getAccounts()
+                                                    recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
+                                                    Toast.makeText(context, "${acc.shortUsername} hesabı silindi.", Toast.LENGTH_SHORT).show()
+                                                }
+                                            ) {
+                                                Text("🗑️", fontSize = 16.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                        }
+
+                        // Add / Update Account Form
+                        Text(
+                            text = if (registeredAccounts.isEmpty()) "Hesap Ekle" else "Yeni Hesap Ekle / Güncelle",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+
                         OutlinedTextField(
-                            value = username,
-                            onValueChange = {
-                                username = it
-                                val normalized = SakaiUsernameUtils.normalize(it)
-                                securePrefs.username = normalized
-                            },
+                            value = inputUsername,
+                            onValueChange = { inputUsername = it },
                             label = { Text("Öğrenci Numarası veya E-posta") },
                             placeholder = { Text("Örn: 2024123456 veya 2024123456@ogr.deu.edu.tr") },
                             modifier = Modifier.fillMaxWidth(),
@@ -194,11 +264,8 @@ fun MainScreen(
                         )
 
                         OutlinedTextField(
-                            value = password,
-                            onValueChange = {
-                                password = it
-                                securePrefs.password = it
-                            },
+                            value = inputPassword,
+                            onValueChange = { inputPassword = it },
                             label = { Text("Sakai Şifresi") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -217,63 +284,59 @@ fun MainScreen(
                         ) {
                             Button(
                                 onClick = {
-                                    val normalizedUser = SakaiUsernameUtils.normalize(username)
-                                    if (normalizedUser.isBlank() || password.isBlank()) {
+                                    val normalizedUser = SakaiUsernameUtils.normalize(inputUsername)
+                                    if (normalizedUser.isBlank() || inputPassword.isBlank()) {
                                         Toast.makeText(context, "Lütfen öğrenci no ve şifre girin.", Toast.LENGTH_SHORT).show()
                                         return@Button
                                     }
-                                    if (username != normalizedUser) {
-                                        username = normalizedUser
-                                    }
-                                    securePrefs.username = normalizedUser
-                                    securePrefs.password = password
 
-                                    val switched = stateManager.checkAccountSwitch(normalizedUser)
-                                    if (switched) {
-                                        apiClient.invalidateSession()
-                                        recentNotifications = stateManager.getRecentNotifications()
-                                    }
-
-                                    isTestingConnection = true
-                                    testResultText = null
+                                    isAddingAccount = true
+                                    accountFeedbackText = null
                                     coroutineScope.launch {
-                                        when (val res = authClient.authenticate(normalizedUser, password)) {
+                                        when (val res = authClient.authenticate(normalizedUser, inputPassword)) {
                                             is AuthResult.Success -> {
-                                                testResultText = "✅ Giriş başarılı! Sakai oturumu doğrulandı ($normalizedUser)."
-                                                testResultSuccess = true
+                                                val acc = SakaiAccount(normalizedUser, inputPassword)
+                                                securePrefs.saveAccount(acc)
+                                                registeredAccounts = securePrefs.getAccounts()
+                                                stateManager.checkAccountSwitch(normalizedUser)
+                                                inputUsername = ""
+                                                inputPassword = ""
+                                                accountFeedbackText = "✅ Giriş doğrulandı! ${acc.shortUsername} hesabı başarıyla kaydedildi."
+                                                accountFeedbackSuccess = true
+                                                recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                                             }
                                             is AuthResult.InvalidCredentials -> {
-                                                testResultText = "❌ Hata: Kullanıcı adı yada şifreniz hatalı."
-                                                testResultSuccess = false
+                                                accountFeedbackText = "❌ Hata: Kullanıcı adı ya da şifreniz hatalı."
+                                                accountFeedbackSuccess = false
                                             }
                                             is AuthResult.Error -> {
-                                                testResultText = "❌ Bağlantı hatası: ${res.message}"
-                                                testResultSuccess = false
+                                                accountFeedbackText = "❌ Bağlantı hatası: ${res.message}"
+                                                accountFeedbackSuccess = false
                                             }
                                         }
-                                        isTestingConnection = false
+                                        isAddingAccount = false
                                     }
                                 },
-                                enabled = !isTestingConnection
+                                enabled = !isAddingAccount
                             ) {
-                                if (isTestingConnection) {
+                                if (isAddingAccount) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(16.dp),
                                         color = Color.White,
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Kontrol ediliyor...")
+                                    Text("Doğrulanıyor...")
                                 } else {
-                                    Text("Girişi Test Et")
+                                    Text("Hesabı Doğrula ve Kaydet")
                                 }
                             }
                         }
 
-                        testResultText?.let { text ->
+                        accountFeedbackText?.let { text ->
                             Text(
                                 text = text,
-                                color = if (testResultSuccess) DeuSuccess else MaterialTheme.colorScheme.error,
+                                color = if (accountFeedbackSuccess) DeuSuccess else MaterialTheme.colorScheme.error,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -335,7 +398,7 @@ fun MainScreen(
                 }
             }
 
-            // 4. Recent Notifications Header
+            // 4. Recent Notifications Header & Manual Check
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -357,54 +420,56 @@ fun MainScreen(
 
                     OutlinedButton(
                         onClick = {
-                            val normalizedUser = SakaiUsernameUtils.normalize(username)
-                            if (normalizedUser.isBlank() || password.isBlank()) {
-                                Toast.makeText(context, "Lütfen önce giriş bilgilerinizi girin.", Toast.LENGTH_SHORT).show()
+                            val currentAccs = registeredAccounts
+                            if (currentAccs.isEmpty()) {
+                                Toast.makeText(context, "Lütfen önce en az bir hesap kaydedin.", Toast.LENGTH_SHORT).show()
                                 return@OutlinedButton
-                            }
-                            if (username != normalizedUser) {
-                                username = normalizedUser
-                                securePrefs.username = normalizedUser
-                            }
-                            val switched = stateManager.checkAccountSwitch(normalizedUser)
-                            if (switched) {
-                                apiClient.invalidateSession()
-                                recentNotifications = stateManager.getRecentNotifications()
                             }
 
                             isManualChecking = true
+                            manualCheckResultText = null
                             coroutineScope.launch {
                                 try {
-                                    val fetchRes = apiClient.fetchNotifications(normalizedUser, password)
-                                    if (fetchRes.isSuccess) {
-                                        val allList = fetchRes.getOrDefault(emptyList())
-                                        val wasFirstBoot = stateManager.isFirstBoot
-                                        val newOnes = stateManager.filterNewNotifications(allList)
-                                        if (newOnes.isNotEmpty()) {
-                                            for (notif in newOnes) {
-                                                NotificationHelper.showNotification(context, notif)
-                                            }
-                                            stateManager.markProcessed(newOnes)
-                                            if (wasFirstBoot) {
-                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Mevcut ${newOnes.size} duyurunuz için bildirim gönderildi ve listelendi!"
+                                    val summaries = mutableListOf<String>()
+                                    var totalNew = 0
+                                    var anyFail = false
+
+                                    for (acc in currentAccs) {
+                                        stateManager.checkAccountSwitch(acc.username)
+                                        val fetchRes = apiClient.fetchNotifications(acc.username, acc.password)
+                                        if (fetchRes.isSuccess) {
+                                            val allList = fetchRes.getOrDefault(emptyList())
+                                            val tagged = allList.map { it.copy(accountUsername = acc.username) }
+                                            val wasFirstBoot = stateManager.isFirstBoot
+                                            val newOnes = stateManager.filterNewNotifications(tagged)
+                                            if (newOnes.isNotEmpty()) {
+                                                for (notif in newOnes) {
+                                                    NotificationHelper.showNotification(context, notif, acc.username)
+                                                }
+                                                stateManager.markProcessed(newOnes)
+                                                totalNew += newOnes.size
+                                                summaries.add("${acc.shortUsername}: ${newOnes.size} yeni duyuru")
                                             } else {
-                                                manualCheckResultText = "✅ ${newOnes.size} yeni duyuru bulundu ve bildirildi!"
+                                                summaries.add("${acc.shortUsername}: güncel")
                                             }
-                                            manualCheckSuccess = true
                                         } else {
-                                            if (wasFirstBoot) {
-                                                manualCheckResultText = "✅ İlk eşitleme yapıldı. Sakai'de henüz duyurunuz bulunmuyor."
-                                            } else {
-                                                manualCheckResultText = "✅ Kontrol başarılı. Yeni duyuru yok, tüm bildirimleriniz güncel."
-                                            }
-                                            manualCheckSuccess = true
+                                            anyFail = true
+                                            val err = fetchRes.exceptionOrNull()?.message?.take(50) ?: "Bağlantı hatası"
+                                            summaries.add("${acc.shortUsername}: ❌ $err")
                                         }
-                                        recentNotifications = stateManager.getRecentNotifications()
+                                    }
+
+                                    recentNotifications = stateManager.getAllRecentNotifications(currentAccs.map { it.username })
+
+                                    if (totalNew > 0) {
+                                        manualCheckResultText = "✅ " + summaries.joinToString(" | ")
+                                        manualCheckSuccess = true
+                                    } else if (!anyFail) {
+                                        manualCheckResultText = "✅ Tüm hesaplar kontrol edildi. Yeni duyuru yok (${summaries.joinToString(", ")})."
+                                        manualCheckSuccess = true
                                     } else {
-                                        val errorMsg = fetchRes.exceptionOrNull()?.message ?: "Bağlantı hatası oluştu."
-                                        manualCheckResultText = "❌ $errorMsg"
+                                        manualCheckResultText = "⚠️ Sonuç: " + summaries.joinToString(" | ")
                                         manualCheckSuccess = false
-                                        Toast.makeText(context, errorMsg, Toast.LENGTH_LONG).show()
                                     }
                                 } finally {
                                     isManualChecking = false
@@ -489,18 +554,38 @@ fun NotificationItemCard(
                 .padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            notif.siteTitle?.let { site ->
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Text(
-                        text = site,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                    )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                notif.accountUsername?.substringBefore("@")?.takeIf { it.isNotBlank() }?.let { shortUser ->
+                    Surface(
+                        color = DeuNavy.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "👤 $shortUser",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = DeuNavy,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                notif.siteTitle?.let { site ->
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = site,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
                 }
             }
             Text(
