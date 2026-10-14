@@ -37,8 +37,9 @@ class MainActivity : ComponentActivity() {
             stateManager.checkAccountSwitch(securePrefs.username)
         }
 
-        // Restore work scheduler if monitoring was previously active
-        if (securePrefs.isMonitoringActive && securePrefs.hasCredentials()) {
+        // Restore hardware alarm and work scheduler if monitoring was previously active
+        if ((securePrefs.isMonitoringActive || securePrefs.isMailMonitoringActive) && securePrefs.hasCredentials()) {
+            tr.edu.deu.sakainotifier.worker.AlarmScheduler.scheduleNext(this, securePrefs.pollIntervalMinutes)
             WorkScheduler.schedule(this, securePrefs.pollIntervalMinutes)
         }
 

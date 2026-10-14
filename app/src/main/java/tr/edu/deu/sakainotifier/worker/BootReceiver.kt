@@ -12,6 +12,7 @@ class BootReceiver : BroadcastReceiver() {
         ) {
             val securePrefs = SecurePreferencesManager(context)
             if ((securePrefs.isMonitoringActive || securePrefs.isMailMonitoringActive) && securePrefs.hasCredentials()) {
+                AlarmScheduler.scheduleNext(context, securePrefs.pollIntervalMinutes)
                 WorkScheduler.schedule(context, securePrefs.pollIntervalMinutes)
             }
         }
