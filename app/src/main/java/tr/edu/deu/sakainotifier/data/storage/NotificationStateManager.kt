@@ -42,12 +42,14 @@ class NotificationStateManager(context: Context) {
         val userFirstBootKey = "${KEY_IS_FIRST_BOOT}_$user"
         if (!prefs.contains(userFirstBootKey) && prefs.contains(KEY_IS_FIRST_BOOT)) {
             val legacyFirstBoot = prefs.getBoolean(KEY_IS_FIRST_BOOT, true)
+            val legacyMailFirstBoot = prefs.getBoolean(KEY_IS_FIRST_MAIL_BOOT, true)
             val legacyIds = prefs.getStringSet(KEY_SEEN_IDS, emptySet())
             val legacyHashes = prefs.getStringSet(KEY_SEEN_HASHES, emptySet())
             val legacyRecent = prefs.getString(KEY_RECENT_NOTIFICATIONS, "[]")
 
             prefs.edit()
                 .putBoolean(userFirstBootKey, legacyFirstBoot)
+                .putBoolean("${KEY_IS_FIRST_MAIL_BOOT}_$user", legacyMailFirstBoot)
                 .putStringSet("${KEY_SEEN_IDS}_$user", legacyIds)
                 .putStringSet("${KEY_SEEN_HASHES}_$user", legacyHashes)
                 .putString("${KEY_RECENT_NOTIFICATIONS}_$user", legacyRecent)
@@ -122,7 +124,11 @@ class NotificationStateManager(context: Context) {
             .putBoolean(getAccountKey(KEY_IS_FIRST_BOOT), false)
             .apply()
 
-        saveRecentNotifications(notifications.take(20))
+        val currentRecent = getRecentNotifications()
+        val combined = (notifications.take(20) + currentRecent).distinctBy {
+            if (it.sakaiId.isNotBlank()) it.sakaiId else it.contentHash
+        }
+        saveRecentNotifications(combined.take(30))
     }
 
     /**
@@ -161,8 +167,9 @@ class NotificationStateManager(context: Context) {
 
     /**
      * Filters incoming student webmail notifications.
-     * On first check for an account, silently marks all existing unread emails as seen (baseline)
-     * so that NO push alerts or vibration spam occur for pre-existing inbox emails.
+     * On first check for an account, merges emails into recent cache non-destructively.
+     * If the inbox has a small number of emails (<= 2, e.g. newly sent test email), alerts immediately.
+     * If there is an existing large backlog (> 2), silently baselines to avoid alert spam.
      */
     fun filterNewEmailNotifications(emails: List<SakaiNotification>): List<SakaiNotification> {
         val seenIds = getSeenIds()
@@ -180,13 +187,21 @@ class NotificationStateManager(context: Context) {
                 .putBoolean(getAccountKey(KEY_IS_FIRST_MAIL_BOOT), false)
                 .apply()
 
-            // Silently populate recent notifications cache so emails are visible in the app,
-            // but return emptyList() to avoid sending push notifications for old inbox emails.
-            val recentCache = emails.take(20)
-            if (recentCache.isNotEmpty()) {
-                saveRecentNotifications(recentCache)
+            // Non-destructively merge with existing recent notifications
+            val currentRecent = getRecentNotifications()
+            val combined = (emails.take(20) + currentRecent).distinctBy {
+                if (it.sakaiId.isNotBlank()) it.sakaiId else it.contentHash
             }
-            return emptyList()
+            saveRecentNotifications(combined.take(30))
+
+            // If the user has a small number of unread emails (<= 2, e.g. newly sent test email or immediate arrival),
+            // notify them immediately so test emails or immediate arrivals are not lost.
+            // If the user has a large backlog (> 2), silently baseline them to prevent notification flood.
+            return if (emails.size <= 2) {
+                emails
+            } else {
+                emptyList()
+            }
         }
 
         return emails.filter { notif ->
@@ -235,7 +250,7 @@ class NotificationStateManager(context: Context) {
             obj.put("siteTitle", item.siteTitle)
             obj.put("url", item.url)
             obj.put("publishedAt", item.publishedAt)
-            obj.put("accountUsername", item.accountUsername ?: currentUser)
+            obj.put("accountUsername", item.accountUsername?.trim()?.lowercase()?.takeIf { it.isNotBlank() } ?: currentUser)
             obj.put("isEmail", item.isEmail)
             array.put(obj)
         }
@@ -249,7 +264,7 @@ class NotificationStateManager(context: Context) {
             val array = JSONArray(raw)
             for (i in 0 until array.length()) {
                 val obj = array.optJSONObject(i) ?: continue
-                val accUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: currentUser
+                val accUser = obj.optString("accountUsername").trim().lowercase().takeIf { it.isNotBlank() } ?: currentUser
                 list.add(
                     SakaiNotification(
                         sakaiId = obj.optString("id"),
@@ -300,7 +315,7 @@ class NotificationStateManager(context: Context) {
                         val array = JSONArray(raw)
                         for (i in 0 until array.length()) {
                             val obj = array.optJSONObject(i) ?: continue
-                            val notifUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: norm
+                            val notifUser = obj.optString("accountUsername").trim().lowercase().takeIf { it.isNotBlank() } ?: norm
                             val id = obj.optString("id")
                             val hash = obj.optString("hash")
                             val primaryId = if (id.isNotBlank()) id else hash
@@ -336,7 +351,7 @@ class NotificationStateManager(context: Context) {
                 val array = JSONArray(legacyRaw)
                 for (i in 0 until array.length()) {
                     val obj = array.optJSONObject(i) ?: continue
-                    val notifUser = obj.optString("accountUsername").takeIf { it.isNotBlank() } ?: primaryUser
+                    val notifUser = obj.optString("accountUsername").trim().lowercase().takeIf { it.isNotBlank() } ?: primaryUser
                     val id = obj.optString("id")
                     val hash = obj.optString("hash")
                     val primaryId = if (id.isNotBlank()) id else hash
