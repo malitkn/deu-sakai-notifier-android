@@ -14,6 +14,11 @@
     <!-- Request ignore battery optimizations for reliable background delivery on Xiaomi/Samsung -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Exact Alarm permissions to pierce Doze Mode on Android 12/13/14 and Xiaomi HyperOS -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application
         android:allowBackup="true"
         android:icon="@drawable/ic_launcher"
@@ -33,7 +38,7 @@
             </intent-filter>
         </activity>
 
-        <!-- BroadcastReceiver restoring WorkManager schedule after device reboot -->
+        <!-- BroadcastReceiver restoring WorkManager / AlarmManager schedule after device reboot -->
         <receiver
             android:name=".worker.BootReceiver"
             android:enabled="true"
@@ -43,6 +48,12 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- BroadcastReceiver executing exact hardware alarm background polling -->
+        <receiver
+            android:name=".worker.AlarmReceiver"
+            android:enabled="true"
+            android:exported="false" />
 
     </application>
 
