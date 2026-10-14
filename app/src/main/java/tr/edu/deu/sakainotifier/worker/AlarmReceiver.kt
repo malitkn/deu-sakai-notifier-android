@@ -7,6 +7,7 @@ import android.os.PowerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
@@ -83,7 +84,11 @@ class AlarmReceiver : BroadcastReceiver() {
         val apiClient = SakaiApiClient()
         val webmailClient = DeuWebmailClient()
 
-        for (account in accounts) {
+        for ((index, account) in accounts.withIndex()) {
+            if (index > 0) {
+                // Anti-throttle cooldown to prevent Roundcube brute-force lockout & WAF rate limits
+                delay(1500)
+            }
             stateManager.checkAccountSwitch(account.username)
             apiClient.invalidateSession()
             webmailClient.invalidateSession()

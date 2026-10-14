@@ -30,6 +30,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import tr.edu.deu.sakainotifier.data.api.AuthResult
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
@@ -1168,7 +1169,11 @@ fun MainScreen(
                                             var anySakaiFail = false
                                             var anyMailFail = false
 
-                                            for (acc in currentAccs) {
+                                            for ((index, acc) in currentAccs.withIndex()) {
+                                                if (index > 0) {
+                                                    // Anti-throttle cooldown to prevent Roundcube brute-force lockout & WAF rate limits
+                                                    delay(1500)
+                                                }
                                                 stateManager.checkAccountSwitch(acc.username)
                                                 apiClient.invalidateSession()
                                                 webmailClient.invalidateSession()

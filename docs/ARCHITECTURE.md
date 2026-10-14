@@ -141,5 +141,5 @@ deu-sakai-notifier-android/
 ### Task 6: Multi-Account Mail Session Isolation, Cookie Jar & Cooldown (v1.2.7)
 - [x] 6.1: `DeuWebmailClient.kt` içinde tüm `Set-Cookie` başlıklarını (F5/yük dengeleyici ve Roundcube çerezleri) saklayan dinamik çerez yönetimini kodla
 - [x] 6.2: `DeuWebmailClient.kt` içine oturum bittiğinde sunucu tarafında temiz kapanma sağlayan `logout` fonksiyonunu ekle
-- [ ] 6.3: `MainScreen.kt`, `AlarmReceiver.kt` ve `SakaiNotificationWorker.kt` içinde ardışık hesap taramalarında WAF/throttle önleyici güvenli bekleme (cooldown) ve tam oturum izolasyonunu sağla
+- [x] 6.3: `MainScreen.kt`, `AlarmReceiver.kt` ve `SakaiNotificationWorker.kt` içinde ardışık hesap taramalarında WAF/throttle önleyici güvenli bekleme (cooldown) ve tam oturum izolasyonunu sağla
 - [ ] 6.4: Sürümü `1.2.7` (versionCode 19) olarak güncelle ve derleme/test bütünlüğünü doğrula

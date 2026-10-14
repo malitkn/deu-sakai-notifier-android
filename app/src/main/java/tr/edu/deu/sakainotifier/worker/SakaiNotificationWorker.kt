@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
@@ -36,7 +37,11 @@ class SakaiNotificationWorker(
 
         var anyNetworkFailure = false
 
-        for (account in accounts) {
+        for ((index, account) in accounts.withIndex()) {
+            if (index > 0) {
+                // Anti-throttle cooldown to prevent Roundcube brute-force lockout & WAF rate limits
+                delay(1500)
+            }
             stateManager.checkAccountSwitch(account.username)
             apiClient.invalidateSession()
             webmailClient.invalidateSession()
