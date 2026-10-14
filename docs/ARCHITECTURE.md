@@ -16,7 +16,7 @@ DEU Sakai Notifier Android; Dokuz Eylül Üniversitesi öğrencilerinin kendi te
 2. **Donanım Destekli Güvenlik:** Şifreler `EncryptedSharedPreferences` / Android KeyStore ile cihazda şifrelenir.
 3. **Minimum 20 Dakika Kısıtı (Sunucu Koruması):** Uygulama yaygın paylaşıldığında DEU sunucularını yormamak ve WAF/IP engellerini önlemek için kontrol aralığı **en az 20 dakika (1200 saniye)** olacaktır.
 4. **Sessiz Başlatma (Silent Bootstrap):** Uygulama ilk kez çalıştırıldığında eski duyurular sessizce hafızaya alınır, kullanıcıya spam bildirim patlaması yapılmaz. Yalnızca sonradan düşen yeni bildirimlerde sesli/titreşimli alert üretilir.
-5. **Modern Android Ekosistemi:** Kotlin, Jetpack Compose, Material 3, WorkManager, OkHttp 4.
+~~5. Modern Android Ekosistemi: Kotlin, Jetpack Compose, Material 3, WorkManager, OkHttp 4.~~ → 5. **Modern Android Ekosistemi:** Kotlin, Jetpack Compose, Material 3, AlarmManager (Exact Alarm + Doze Bypass), WorkManager, OkHttp 4. (Tarih: 2026-10-14, Gerekçe: Xiaomi Mi 12 ve Android 12+ Doze Mode'da periyodik WorkManager'ın süresiz ertelenmesini önlemek).
 6. **Universal APK Dağıtımı:** Tek bir universal `.apk` ile tüm modern Android cihazlara doğrudan kurulum (sideload).
 
 ---
@@ -57,16 +57,22 @@ deu-sakai-notifier-android/
                     ├── SakaiApplication.kt
                     ├── data/
                     │   ├── model/
+                    │   │   ├── SakaiAccount.kt
                     │   │   └── SakaiNotification.kt
                     │   ├── api/
                     │   │   ├── SakaiAuthClient.kt
-                    │   │   └── SakaiApiClient.kt
-                    │   └── storage/
-                    │       ├── SecurePreferencesManager.kt
-                    │       └── NotificationStateManager.kt
+                    │   │   ├── SakaiApiClient.kt
+                    │   │   └── DeuWebmailClient.kt
+                    │   ├── storage/
+                    │   │   ├── SecurePreferencesManager.kt
+                    │   │   └── NotificationStateManager.kt
+                    │   └── updater/
+                    │       └── UpdateChecker.kt
                     ├── worker/
                     │   ├── SakaiNotificationWorker.kt
                     │   ├── WorkScheduler.kt
+                    │   ├── AlarmScheduler.kt
+                    │   ├── AlarmReceiver.kt
                     │   └── BootReceiver.kt
                     ├── notification/
                     │   └── NotificationHelper.kt
@@ -109,3 +115,20 @@ deu-sakai-notifier-android/
 - [x] 5.1: `AndroidManifest.xml` izinlerini (`INTERNET`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED`) ve bileşenleri yapılandır
 - [x] 5.2: Universal APK derleme yapılandırmasını (`app/build.gradle.kts`) tamamla
 - [x] 5.3: `.github/workflows/build-apk.yml` GitHub Actions CI hattını ekle ve `README.md` dokümantasyonunu hazırla
+
+### Sürüm İyileştirmeleri (v1.2.0 — v1.2.4)
+- [x] Multi-Account & ÇAP: Birden çok öğrenci hesabı ekleme, düzenleme ve silme desteği
+- [x] DEU Webmail Takibi: `DeuWebmailClient.kt` ile Roundcube tabanlı öğrenci webmail entegrasyonu
+- [x] Silent Baseline & Batching: İlk e-posta taramasında baseline sessiz alma ve toplu iletilerde `InboxStyle` tek kart
+- [x] Hibernation & Battery Kılavuzu: Xiaomi/Samsung arka plan optimizasyonu ve Android 11+ otomatik uyutma kısayolu
+- [x] In-App Sürüm Güncelleme: `UpdateChecker.kt` ile GitHub Releases API kontrolü ve doğrudan APK indirme
+
+### Revision: Exact Alarm Background Scheduler (Doze & Xiaomi Bypass)
+- [ ] R.1: `AndroidManifest.xml` izinlerini (`SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `WAKE_LOCK`) ve `AlarmReceiver` bileşenini yapılandır
+- [ ] R.2: `AlarmScheduler.kt` ile donanım seviyesinde `setExactAndAllowWhileIdle` zamanlayıcısını ve iptal mantığını kodla
+- [ ] R.3: `AlarmReceiver.kt` ile Doze modunda `WakeLock` + `goAsync()` üzerinden hızlı yoklama ve zincirleme yeniden kurma döngüsünü kodla
+- [ ] R.4: `BootReceiver.kt` ve `MainActivity.kt` üzerinde alarm döngüsünü başlat ve senkronize et
+- [ ] R.5: `MainScreen.kt` arayüz toggle ve aralık kontrollerini `AlarmScheduler` ile entegre et
+- [ ] R.6: Xiaomi Mi 12 için "Otomatik Başlatma (Autostart)" doğrudan ayarlar kısayolunu rehber kartına ekle
+- [ ] R.7: Derleme ve kod bütünlüğünü doğrula
+

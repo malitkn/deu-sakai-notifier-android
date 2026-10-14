@@ -35,3 +35,35 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
 * **Karar:** Dağıtım için tek bir universal APK üretilecek ve her sürümde `.github/workflows/build-apk.yml` GitHub Actions CI hattı ile derlenip GitHub Releases'e otomatik yüklenecektir.
 * **Gerekçe:** Öğrencilerin kendi telefonlarına (ARM64, ARMv7, x86) işlemci mimarisi düşünmeden doğrudan APK'yı indirip kurabilmesi sağlanır.
 * **Etkilenen Kapsam:** `.github/workflows/build-apk.yml`, `app/build.gradle.kts`.
+
+### [DEC-005] Dokuz Eylül Webmail (Roundcube) Entegrasyonu ve Çoklu Hesap (ÇAP) Mimarisi
+* **Tarih:** 2026-10-11
+* **Karar:** Uygulamaya isteğe bağlı DEU Öğrenci Webmail (`ogrmail.deu.edu.tr`) takibi eklenmiş ve Çift Anadal / Yan Dal öğrencileri için çoklu hesap desteği getirilmiştir.
+* **Gerekçe:** Öğrencilerin önemli üniversite duyuruları, staj ve sınav bildirimlerini kaçırmaması; birden fazla öğrenci numarası olan öğrencilerin tüm bildirimleri tek uygulamada izole şekilde alabilmesi amaçlanmıştır.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *IMAP Protokolü:* Doğrudan soket bağlantısı mobil ağlarda bağlantı kopmalarına ve yüksek pil tüketimine sebep olduğu için elenmiş; hafif Roundcube HTTP endpoint'leri tercih edilmiştir.
+* **Etkilenen Kapsam:** `DeuWebmailClient.kt`, `SakaiAccount.kt`, `SecurePreferencesManager.kt`, `MainScreen.kt`.
+
+### [DEC-006] Sessiz E-posta Başlatma (Baseline) ve Anti-Flood Batch Bildirimleri
+* **Tarih:** 2026-10-11
+* **Karar:** Webmail ilk kez açıldığında mevcut inbox sessizce baseline olarak kaydedilecek (Silent Mail Bootstrap); 3'ten fazla yeni e-posta geldiğinde ise bildirim paneli patlatılmayıp tek bir `InboxStyle` özet bildirim kartı oluşturulacaktır.
+* **Gerekçe:** Kullanıcının telefonuna yüzlerce eski e-posta için sesli/titreşimli bildirim patlaması yaşanmasını önlemek ve bildirim çubuğunu temiz tutmak.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *Her Mail İçin Bağımsız Bildirim:* 10+ mail geldiğinde telefonu kilitleme noktasına getirdiği için elenmiştir.
+* **Etkilenen Kapsam:** `NotificationStateManager.kt`, `NotificationHelper.kt`, `SakaiNotificationWorker.kt`.
+
+### [DEC-007] OEM Pil Kısıtlamaları ve Android 11+ Hibernation Uyarı Kartı
+* **Tarih:** 2026-10-11
+* **Karar:** Xiaomi, Samsung gibi agresif OEM pil kısıtlamalarına ve Android 11+ kullanılmayan uygulama etkinliğini durdurma (App Hibernation / Auto-Revoke) kısıtlamalarına karşı ana ekranda rehberlik kartları ve doğrudan sistem ayarları kısayolu sunulmuştur.
+* **Gerekçe:** Öğrencilerin günlerce uygulamayı açmadığında arka plan kontrollerinin işletim sistemi tarafından sessizce durdurulmasını engellemek.
+* **Etkilenen Kapsam:** `MainScreen.kt`, `README.md`.
+
+### [DEC-008] Doze Mode ve OEM Kısıtlamaları İçin Exact Alarm (setExactAndAllowWhileIdle) Entegrasyonu
+* **Tarih:** 2026-10-14
+* **Karar:** Arka plan periyodik kontrol mekanizması ertelenebilir `PeriodicWorkRequest`'ten, donanım seviyesinde Doze modunu ve Xiaomi MIUI/HyperOS arka plan uyutmasını delen `AlarmManager.setExactAndAllowWhileIdle()` ve `WakeLock` + `goAsync()` tabanlı sessiz donanım alarmı döngüsüne yükseltilmiştir.
+* **Gerekçe:** Xiaomi Mi 12 ve Android 12+ cihazlarda ekran kapalıyken JobScheduler ve Doze kısıtlarının periyodik kontrolleri saatlerce dondurmasını engellemek; kullanıcının seçtiği dakikada (min 20 dk) CPU'yu 2-3 saniye sessizce uyandırıp tam zamanında bildirim kontrolünü garanti altına almak.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *Kalıcı Ön Plan Servisi (Foreground Service):* Bildirim çubuğunu sürekli meşgul edip gereksiz kalabalık yaratacağı için yedek opsiyon olarak tutulmuş; birincil yöntem olarak tamamen sessiz ve görünmez AlarmManager seçilmiştir.
+* **Etkilenen Kapsam:** `AndroidManifest.xml`, `AlarmScheduler.kt`, `AlarmReceiver.kt`, `BootReceiver.kt`, `MainScreen.kt`, `MainActivity.kt`.
+
+
