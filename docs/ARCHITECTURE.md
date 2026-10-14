@@ -135,7 +135,7 @@ deu-sakai-notifier-android/
 ### Revision: Multi-Account Mail Sync & Filter Resolution (v1.2.6)
 - [x] M.1: `DeuWebmailClient.kt` içinde Roundcube e-posta yanıtları için iç içe JSON ve özel karakterleri hatasız ayrıştıran derinlik kontrollü ayrıştırıcıyı kodla
 - [x] M.2: `DeuWebmailClient.kt`, `AlarmReceiver.kt` ve `SakaiNotificationWorker.kt` içinde çoklu hesap oturum ve bağlantı havuzu (`evictAll`) izolasyonunu sağla
-- [ ] M.3: `NotificationHelper.kt` bildirim yöneticisinde hesap kapsamlı ID (`uniqueId`) kullanarak bildirim çubuğu üzerine yazılma hatasını düzelt
+- [x] M.3: `NotificationHelper.kt` bildirim yöneticisinde hesap kapsamlı ID (`uniqueId`) kullanarak bildirim çubuğu üzerine yazılma hatasını düzelt
 - [ ] M.4: `NotificationStateManager.kt` içinde sessiz e-posta baseline mantığını (az sayıda yeni mailde bildirim gönderecek, eski yığınları sessiz alacak şekilde) ve tahribatsız önbellek birleştirmeyi kodla
 - [ ] M.5: `MainScreen.kt` üzerinde hesap ve tür filtresi sayaçları ile liste görünümünü tam senkronize hale getir
 - [ ] M.6: Sürümü `1.2.6` (versionCode 18) olarak güncelle ve değişiklikleri doğrula

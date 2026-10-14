@@ -122,7 +122,7 @@ object NotificationHelper {
 
         try {
             val notificationManager = NotificationManagerCompat.from(context)
-            notificationManager.notify(notification.sakaiId.hashCode(), builder.build())
+            notificationManager.notify(uniqueId, builder.build())
         } catch (e: SecurityException) {
             // Android 13 POST_NOTIFICATIONS permission not granted yet
             e.printStackTrace()
