@@ -126,7 +126,7 @@ deu-sakai-notifier-android/
 ### Revision: Exact Alarm Background Scheduler (Doze & Xiaomi Bypass)
 - [x] R.1: `AndroidManifest.xml` izinlerini (`SCHEDULE_EXACT_ALARM`, `USE_EXACT_ALARM`, `WAKE_LOCK`) ve `AlarmReceiver` bileşenini yapılandır
 - [x] R.2: `AlarmScheduler.kt` ile donanım seviyesinde `setExactAndAllowWhileIdle` zamanlayıcısını ve iptal mantığını kodla
-- [ ] R.3: `AlarmReceiver.kt` ile Doze modunda `WakeLock` + `goAsync()` üzerinden hızlı yoklama ve zincirleme yeniden kurma döngüsünü kodla
+- [x] R.3: `AlarmReceiver.kt` ile Doze modunda `WakeLock` + `goAsync()` üzerinden hızlı yoklama ve zincirleme yeniden kurma döngüsünü kodla
 - [ ] R.4: `BootReceiver.kt` ve `MainActivity.kt` üzerinde alarm döngüsünü başlat ve senkronize et
 - [ ] R.5: `MainScreen.kt` arayüz toggle ve aralık kontrollerini `AlarmScheduler` ile entegre et
 - [ ] R.6: Xiaomi Mi 12 için "Otomatik Başlatma (Autostart)" doğrudan ayarlar kısayolunu rehber kartına ekle
