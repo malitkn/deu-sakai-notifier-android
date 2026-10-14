@@ -278,9 +278,39 @@ class DeuWebmailClient(
         }
     }
 
+    suspend fun logout(session: WebmailSession? = cachedSession): Unit = withContext(Dispatchers.IO) {
+        val sess = session ?: return@withContext
+        try {
+            val logoutUrl = "$BASE_URL/?_task=logout&_token=${sess.requestToken}"
+            val request = Request.Builder()
+                .url(logoutUrl)
+                .get()
+                .header("Cookie", sess.toCookieHeader())
+                .header("Referer", INBOX_URL)
+                .header("User-Agent", USER_AGENT)
+                .build()
+
+            client.newCall(request).execute().close()
+        } catch (_: Exception) {
+            // Non-critical, ignore network issues during logout
+        } finally {
+            if (cachedSession == sess) {
+                cachedSession = null
+                cachedEmail = null
+            }
+            try {
+                client.connectionPool.evictAll()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     suspend fun testLogin(email: String, pass: String): WebmailTestResult {
         return when (val res = authenticate(email, pass)) {
-            is WebmailAuthResult.Success -> WebmailTestResult.Success
+            is WebmailAuthResult.Success -> {
+                logout(res.session)
+                WebmailTestResult.Success
+            }
             is WebmailAuthResult.InvalidCredentials -> WebmailTestResult.InvalidCredentials(res.message)
             is WebmailAuthResult.Error -> WebmailTestResult.ServerUnavailable(res.message, res.cause)
         }
@@ -331,6 +361,9 @@ class DeuWebmailClient(
             return@withContext Result.failure(Exception("E-posta kontrolünde ağ hatası: ${e.localizedMessage ?: e.message}", e))
         } catch (e: Exception) {
             return@withContext Result.failure(e)
+        } finally {
+            // Cleanly logout on server side to release PHP session resources
+            logout(session)
         }
     }
 
