@@ -139,7 +139,7 @@ deu-sakai-notifier-android/
 - [x] M.4: `NotificationStateManager.kt` içinde sessiz e-posta baseline mantığını (az sayıda yeni mailde bildirim gönderecek, eski yığınları sessiz alacak şekilde) ve tahribatsız önbellek birleştirmeyi kodla
 - [x] M.5: `MainScreen.kt` üzerinde hesap ve tür filtresi sayaçları ile liste görünümünü tam senkronize hale getir
 ### Task 6: Multi-Account Mail Session Isolation, Cookie Jar & Cooldown (v1.2.7)
-- [ ] 6.1: `DeuWebmailClient.kt` içinde tüm `Set-Cookie` başlıklarını (F5/yük dengeleyici ve Roundcube çerezleri) saklayan dinamik çerez yönetimini kodla
+- [x] 6.1: `DeuWebmailClient.kt` içinde tüm `Set-Cookie` başlıklarını (F5/yük dengeleyici ve Roundcube çerezleri) saklayan dinamik çerez yönetimini kodla
 - [ ] 6.2: `DeuWebmailClient.kt` içine oturum bittiğinde sunucu tarafında temiz kapanma sağlayan `logout` fonksiyonunu ekle
 - [ ] 6.3: `MainScreen.kt`, `AlarmReceiver.kt` ve `SakaiNotificationWorker.kt` içinde ardışık hesap taramalarında WAF/throttle önleyici güvenli bekleme (cooldown) ve tam oturum izolasyonunu sağla
 - [ ] 6.4: Sürümü `1.2.7` (versionCode 19) olarak güncelle ve derleme/test bütünlüğünü doğrula

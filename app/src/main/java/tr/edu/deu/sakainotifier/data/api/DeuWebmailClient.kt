@@ -17,14 +17,18 @@ import java.util.regex.Pattern
 data class WebmailSession(
     val sessId: String,
     val sessAuth: String?,
-    val requestToken: String
+    val requestToken: String,
+    val cookies: Map<String, String> = emptyMap()
 ) {
     fun toCookieHeader(): String {
-        val cookies = mutableListOf("roundcube_sessid=$sessId")
-        if (!sessAuth.isNullOrBlank()) {
-            cookies.add("roundcube_sessauth=$sessAuth")
+        val cookieMap = cookies.toMutableMap()
+        if (sessId.isNotBlank()) {
+            cookieMap["roundcube_sessid"] = sessId
         }
-        return cookies.joinToString("; ")
+        if (!sessAuth.isNullOrBlank()) {
+            cookieMap["roundcube_sessauth"] = sessAuth
+        }
+        return cookieMap.entries.joinToString("; ") { "${it.key}=${it.value}" }
     }
 }
 
@@ -121,6 +125,21 @@ class DeuWebmailClient(
             }
             return null
         }
+        fun extractCookies(cookieHeaders: List<String>): Map<String, String> {
+            val map = mutableMapOf<String, String>()
+            for (header in cookieHeaders) {
+                val part = header.substringBefore(";").trim()
+                val eqIdx = part.indexOf('=')
+                if (eqIdx > 0) {
+                    val name = part.substring(0, eqIdx).trim()
+                    val value = part.substring(eqIdx + 1).trim()
+                    if (name.isNotBlank()) {
+                        map[name] = value
+                    }
+                }
+            }
+            return map
+        }
     }
 
     private var cachedSession: WebmailSession? = null
@@ -142,24 +161,21 @@ class DeuWebmailClient(
         }
 
         try {
-            // Step 1: GET login page to obtain initial roundcube_sessid cookie and CSRF _token
+            // Step 1: GET login page to obtain initial roundcube_sessid, load balancer cookies and CSRF _token
             val getRequest = Request.Builder()
                 .url(LOGIN_URL)
                 .get()
                 .header("User-Agent", USER_AGENT)
                 .build()
 
+            val accumulatedCookies = mutableMapOf<String, String>()
             var initialSessId: String? = null
             var loginToken: String? = null
 
             client.newCall(getRequest).execute().use { getResp ->
                 val cookieHeaders = getResp.headers("Set-Cookie")
-                for (header in cookieHeaders) {
-                    val part = header.substringBefore(";").trim()
-                    if (part.startsWith("roundcube_sessid=")) {
-                        initialSessId = part.substringAfter("roundcube_sessid=")
-                    }
-                }
+                accumulatedCookies.putAll(extractCookies(cookieHeaders))
+                initialSessId = accumulatedCookies["roundcube_sessid"]
 
                 val bodyHtml = getResp.body?.string().orEmpty()
                 val tokenPattern = Pattern.compile("name=[\"']_token[\"']\\s+value=[\"']([^\"']+)[\"']")
@@ -179,7 +195,7 @@ class DeuWebmailClient(
                 return@withContext WebmailAuthResult.Error("Webmail oturum belirteci veya çerez alınamadı.")
             }
 
-            // Step 2: POST credentials to authenticate
+            // Step 2: POST credentials to authenticate with all accumulated initial cookies (including F5 sticky session)
             val formBody = FormBody.Builder()
                 .add("_token", loginToken!!)
                 .add("_task", "login")
@@ -190,13 +206,14 @@ class DeuWebmailClient(
                 .add("_pass", pass)
                 .build()
 
+            val initialCookieHeader = accumulatedCookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
             val postRequest = Request.Builder()
                 .url(LOGIN_URL)
                 .post(formBody)
                 .header("Content-Type", "application/x-www-form-urlencoded")
                 .header("Origin", BASE_URL)
                 .header("Referer", LOGIN_URL)
-                .header("Cookie", "roundcube_sessid=$initialSessId")
+                .header("Cookie", initialCookieHeader)
                 .header("User-Agent", USER_AGENT)
                 .build()
 
@@ -205,18 +222,11 @@ class DeuWebmailClient(
                     return@withContext WebmailAuthResult.InvalidCredentials("Öğrenci e-posta adresi ya da şifreniz hatalı.")
                 }
 
-                var currentSessId = initialSessId!!
-                var sessAuth: String? = null
-
                 val postCookieHeaders = postResp.headers("Set-Cookie")
-                for (header in postCookieHeaders) {
-                    val part = header.substringBefore(";").trim()
-                    if (part.startsWith("roundcube_sessid=")) {
-                        currentSessId = part.substringAfter("roundcube_sessid=")
-                    } else if (part.startsWith("roundcube_sessauth=")) {
-                        sessAuth = part.substringAfter("roundcube_sessauth=")
-                    }
-                }
+                accumulatedCookies.putAll(extractCookies(postCookieHeaders))
+
+                var currentSessId = accumulatedCookies["roundcube_sessid"] ?: initialSessId!!
+                var sessAuth: String? = accumulatedCookies["roundcube_sessauth"]
 
                 val location = postResp.header("Location").orEmpty()
                 val bodyText = postResp.body?.string().orEmpty()
@@ -253,7 +263,8 @@ class DeuWebmailClient(
                 val session = WebmailSession(
                     sessId = currentSessId,
                     sessAuth = sessAuth,
-                    requestToken = requestToken
+                    requestToken = requestToken,
+                    cookies = accumulatedCookies
                 )
 
                 cachedSession = session
