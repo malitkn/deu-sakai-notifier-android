@@ -84,6 +84,43 @@ class DeuWebmailClient(
                     .trim()
             }
         }
+        /**
+         * Safely extracts a balanced JSON object starting at startBraceIndex ('{'),
+         * respecting nested braces, strings, and escaped characters.
+         */
+        fun extractJsonObject(text: String, startBraceIndex: Int): String? {
+            if (startBraceIndex < 0 || startBraceIndex >= text.length || text[startBraceIndex] != '{') return null
+            var depth = 0
+            var inString = false
+            var escape = false
+
+            for (i in startBraceIndex until text.length) {
+                val c = text[i]
+                if (escape) {
+                    escape = false
+                    continue
+                }
+                if (c == '\\') {
+                    escape = true
+                    continue
+                }
+                if (c == '"') {
+                    inString = !inString
+                    continue
+                }
+                if (!inString) {
+                    if (c == '{') {
+                        depth++
+                    } else if (c == '}') {
+                        depth--
+                        if (depth == 0) {
+                            return text.substring(startBraceIndex, i + 1)
+                        }
+                    }
+                }
+            }
+            return null
+        }
     }
 
     private var cachedSession: WebmailSession? = null
@@ -327,13 +364,15 @@ class DeuWebmailClient(
             val exec = json.optString("exec", "")
             if (exec.isBlank()) return emptyList()
 
-            // Matches: this.add_message_row( <id>, <metadata_json_object> )
-            val rowPattern = Pattern.compile("add_message_row\\s*\\(\\s*(\\d+)\\s*,\\s*(\\{.+?\\})", Pattern.DOTALL)
-            val matcher = rowPattern.matcher(exec)
+            // Matches: this.add_message_row( <id>, { ... } )
+            // Finds the start of add_message_row call and numeric message ID, then safely extracts the balanced JSON metadata object
+            val callPattern = Pattern.compile("add_message_row\\s*\\(\\s*(\\d+)\\s*,\\s*")
+            val matcher = callPattern.matcher(exec)
 
             while (matcher.find()) {
                 val msgId = matcher.group(1) ?: continue
-                val metaStr = matcher.group(2) ?: continue
+                val braceStart = matcher.end()
+                val metaStr = extractJsonObject(exec, braceStart) ?: continue
 
                 try {
                     val metaObj = JSONObject(metaStr)
@@ -346,7 +385,8 @@ class DeuWebmailClient(
                     val date = metaObj.optString("date", "")
                     val normalizedDate = SakaiNotification.formatPublishedDate(date) ?: date
 
-                    val shortAccount = studentUsername.substringBefore("@").trim()
+                    val normalizedAccount = studentUsername.trim().lowercase()
+                    val shortAccount = normalizedAccount.substringBefore("@")
                     val notifId = "mail_${shortAccount}_$msgId"
                     val contentHash = sha256("$notifId:$sender:$subject:$date")
 
@@ -360,7 +400,7 @@ class DeuWebmailClient(
                             url = BASE_URL,
                             publishedAt = normalizedDate.ifBlank { null },
                             rawJson = metaStr,
-                            accountUsername = studentUsername,
+                            accountUsername = normalizedAccount,
                             isEmail = true
                         )
                     )
