@@ -130,5 +130,5 @@ deu-sakai-notifier-android/
 - [x] R.4: `BootReceiver.kt` ve `MainActivity.kt` üzerinde alarm döngüsünü başlat ve senkronize et
 - [x] R.5: `MainScreen.kt` arayüz toggle ve aralık kontrollerini `AlarmScheduler` ile entegre et
 - [x] R.6: Xiaomi Mi 12 için "Otomatik Başlatma (Autostart)" doğrudan ayarlar kısayolunu rehber kartına ekle
-- [ ] R.7: Derleme ve kod bütünlüğünü doğrula
+- [x] R.7: Derleme ve kod bütünlüğünü doğrula (v1.2.5 versionCode 17)
 
