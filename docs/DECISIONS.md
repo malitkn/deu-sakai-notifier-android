@@ -66,4 +66,11 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
   * *Kalıcı Ön Plan Servisi (Foreground Service):* Bildirim çubuğunu sürekli meşgul edip gereksiz kalabalık yaratacağı için yedek opsiyon olarak tutulmuş; birincil yöntem olarak tamamen sessiz ve görünmez AlarmManager seçilmiştir.
 * **Etkilenen Kapsam:** `AndroidManifest.xml`, `AlarmScheduler.kt`, `AlarmReceiver.kt`, `BootReceiver.kt`, `MainScreen.kt`, `MainActivity.kt`.
 
+### [DEC-009] Çoklu Hesap E-posta Oturum İzolasyonu, Dinamik Çerez Deposu ve Cooldown Mekanizması
+* **Tarih:** 2026-10-14
+* **Karar:** Çoklu hesap e-posta kontrollerinde oturumların birbirine sızmasını önlemek için dinamik `Set-Cookie` deposu (F5 yük dengeleyici ve Roundcube çerezleri dahil), her oturum sonrasında graceful `logout` çağrısı ve ardışık hesap taramalarında 1.5 saniye anti-throttle cooldown beklemesi eklenmiştir.
+* **Gerekçe:** DEU F5 yük dengeleyicisinin sticky session çerezlerinin kaybolmasını önlemek, açık kalan PHP oturumlarının sonraki hesabı bozmasını engellemek ve Roundcube/WAF brute-force (login throttle) kısıtına takılmamak.
+* **Etkilenen Kapsam:** `DeuWebmailClient.kt`, `MainScreen.kt`, `AlarmReceiver.kt`, `SakaiNotificationWorker.kt`.
+
+
 
