@@ -476,15 +476,46 @@ fun MainScreen(
                                 }
                             }
                             Text(
-                                text = "Xiaomi, Samsung vb. cihazlarda bildirimlerin uyku modunda durmaması için uygulamanın pil ayarını 'Kısıtlama Yok' (Unrestricted) yapmanız önerilir.",
+                                text = "Xiaomi, Samsung vb. cihazlarda ekran kapalıyken bildirimlerin durmaması için:\n• Pil Tasarrufu: 'Kısıtlama Yok' yapın.\n• Xiaomi / HyperOS: 'Otomatik Başlatma' iznini açın.\n• Son uygulamalar ekranında DEU Sakai'yi kilit 🔒 simgesiyle sabitleyin.",
                                 fontSize = 12.sp,
                                 color = Color.DarkGray,
                                 lineHeight = 16.sp
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.End
+                                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
+                                if (Build.MANUFACTURER.contains("xiaomi", ignoreCase = true) ||
+                                    Build.MANUFACTURER.contains("redmi", ignoreCase = true) ||
+                                    Build.BRAND.contains("xiaomi", ignoreCase = true) ||
+                                    Build.BRAND.contains("poco", ignoreCase = true)
+                                ) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            try {
+                                                val intent = Intent().apply {
+                                                    component = android.content.ComponentName(
+                                                        "com.miui.securitycenter",
+                                                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                                                    )
+                                                }
+                                                context.startActivity(intent)
+                                            } catch (_: Exception) {
+                                                try {
+                                                    val fallbackIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                        data = Uri.parse("package:${context.packageName}")
+                                                    }
+                                                    context.startActivity(fallbackIntent)
+                                                } catch (_: Exception) {
+                                                }
+                                            }
+                                        },
+                                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        Text("Otomatik Başlatma 🚀", fontSize = 11.sp)
+                                    }
+                                }
                                 OutlinedButton(
                                     onClick = {
                                         try {
@@ -497,9 +528,9 @@ fun MainScreen(
                                             context.startActivity(fallbackIntent)
                                         }
                                     },
-                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                                 ) {
-                                    Text("Pil Ayarını Aç ⚙️", fontSize = 12.sp)
+                                    Text("Pil Ayarı ⚙️", fontSize = 11.sp)
                                 }
                             }
                         }
