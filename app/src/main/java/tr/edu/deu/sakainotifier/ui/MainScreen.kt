@@ -152,6 +152,8 @@ fun MainScreen(
                         isHibernationWhitelisted = context.packageManager.isAutoRevokeWhitelisted
                     } catch (_: Exception) {}
                 }
+                registeredAccounts = securePrefs.getAccounts()
+                recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -181,10 +183,17 @@ fun MainScreen(
         }
     }
 
-    val displayedNotifications = remember(recentNotifications, selectedAccountFilter, selectedTypeFilter) {
+    val defaultAccountShort = registeredAccounts.firstOrNull()?.shortUsername
+
+    val displayedNotifications = remember(recentNotifications, selectedAccountFilter, selectedTypeFilter, registeredAccounts) {
         recentNotifications.filter { notif ->
+            val notifUser = if (!notif.accountUsername.isNullOrBlank()) {
+                notif.accountUsername.substringBefore("@").trim()
+            } else {
+                defaultAccountShort.orEmpty()
+            }
             val matchesAccount = selectedAccountFilter == null ||
-                notif.accountUsername?.substringBefore("@").equals(selectedAccountFilter, ignoreCase = true)
+                notifUser.equals(selectedAccountFilter!!.trim(), ignoreCase = true)
             val matchesType = when (selectedTypeFilter) {
                 NotificationTypeFilter.ALL -> true
                 NotificationTypeFilter.SAKAI -> !notif.isEmail
@@ -723,6 +732,9 @@ fun MainScreen(
                                                             inputEmail = ""
                                                         }
                                                         securePrefs.removeAccount(acc.username)
+                                                        if (selectedAccountFilter?.equals(acc.shortUsername, ignoreCase = true) == true) {
+                                                            selectedAccountFilter = null
+                                                        }
                                                         registeredAccounts = securePrefs.getAccounts()
                                                         recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                                                         Toast.makeText(context, "${acc.shortUsername} hesabı silindi.", Toast.LENGTH_SHORT).show()
@@ -1254,17 +1266,38 @@ fun MainScreen(
 
                     // Account & Type Filter Chips
                     if (recentNotifications.isNotEmpty()) {
-                        val accountFiltered = remember(recentNotifications, selectedAccountFilter) {
+                        val defaultAccountShort = registeredAccounts.firstOrNull()?.shortUsername
+
+                        // 1. Account-filtered notification list (for Type filter counts)
+                        val accountFiltered = remember(recentNotifications, selectedAccountFilter, registeredAccounts) {
                             if (selectedAccountFilter == null) {
                                 recentNotifications
                             } else {
-                                recentNotifications.filter {
-                                    it.accountUsername?.substringBefore("@").equals(selectedAccountFilter, ignoreCase = true)
+                                recentNotifications.filter { notif ->
+                                    val notifUser = if (!notif.accountUsername.isNullOrBlank()) {
+                                        notif.accountUsername.substringBefore("@").trim()
+                                    } else {
+                                        defaultAccountShort.orEmpty()
+                                    }
+                                    notifUser.equals(selectedAccountFilter!!.trim(), ignoreCase = true)
                                 }
                             }
                         }
-                        val sakaiCount = remember(accountFiltered) { accountFiltered.count { !it.isEmail } }
-                        val mailCount = remember(accountFiltered) { accountFiltered.count { it.isEmail } }
+
+                        // 2. Type-filtered notification list (for Account filter counts)
+                        val typeFiltered = remember(recentNotifications, selectedTypeFilter, registeredAccounts) {
+                            recentNotifications.filter { notif ->
+                                when (selectedTypeFilter) {
+                                    NotificationTypeFilter.ALL -> true
+                                    NotificationTypeFilter.SAKAI -> !notif.isEmail
+                                    NotificationTypeFilter.MAIL -> notif.isEmail
+                                }
+                            }
+                        }
+
+                        val totalCountForAccount = accountFiltered.size
+                        val sakaiCountForAccount = remember(accountFiltered) { accountFiltered.count { !it.isEmail } }
+                        val mailCountForAccount = remember(accountFiltered) { accountFiltered.count { it.isEmail } }
 
                         // 1. Account Filter Chips (if multiple accounts registered)
                         if (registeredAccounts.size > 1) {
@@ -1282,16 +1315,21 @@ fun MainScreen(
                                     FilterChip(
                                         selected = selectedAccountFilter == null,
                                         onClick = { selectedAccountFilter = null },
-                                        label = { Text("Tüm Hesaplar (${recentNotifications.size})", fontSize = 12.sp) }
+                                        label = { Text("Tüm Hesaplar (${typeFiltered.size})", fontSize = 12.sp) }
                                     )
                                     registeredAccounts.forEach { acc ->
-                                        val count = recentNotifications.count {
-                                            it.accountUsername?.substringBefore("@").equals(acc.shortUsername, ignoreCase = true)
+                                        val count = typeFiltered.count { notif ->
+                                            val notifUser = if (!notif.accountUsername.isNullOrBlank()) {
+                                                notif.accountUsername.substringBefore("@").trim()
+                                            } else {
+                                                defaultAccountShort.orEmpty()
+                                            }
+                                            notifUser.equals(acc.shortUsername, ignoreCase = true)
                                         }
                                         FilterChip(
-                                            selected = selectedAccountFilter == acc.shortUsername,
+                                            selected = selectedAccountFilter?.equals(acc.shortUsername, ignoreCase = true) == true,
                                             onClick = {
-                                                selectedAccountFilter = if (selectedAccountFilter == acc.shortUsername) null else acc.shortUsername
+                                                selectedAccountFilter = if (selectedAccountFilter?.equals(acc.shortUsername, ignoreCase = true) == true) null else acc.shortUsername
                                             },
                                             label = { Text("🎓 ${acc.shortUsername} ($count)", fontSize = 12.sp) }
                                         )
@@ -1317,7 +1355,7 @@ fun MainScreen(
                                 FilterChip(
                                     selected = selectedTypeFilter == NotificationTypeFilter.ALL,
                                     onClick = { selectedTypeFilter = NotificationTypeFilter.ALL },
-                                    label = { Text("Tümü (${accountFiltered.size})", fontSize = 12.sp) }
+                                    label = { Text("Tümü ($totalCountForAccount)", fontSize = 12.sp) }
                                 )
                                 FilterChip(
                                     selected = selectedTypeFilter == NotificationTypeFilter.SAKAI,
@@ -1328,7 +1366,7 @@ fun MainScreen(
                                             NotificationTypeFilter.SAKAI
                                         }
                                     },
-                                    label = { Text("🎓 Sakai Duyuruları ($sakaiCount)", fontSize = 12.sp) }
+                                    label = { Text("🎓 Sakai Duyuruları ($sakaiCountForAccount)", fontSize = 12.sp) }
                                 )
                                 FilterChip(
                                     selected = selectedTypeFilter == NotificationTypeFilter.MAIL,
@@ -1339,7 +1377,7 @@ fun MainScreen(
                                             NotificationTypeFilter.MAIL
                                         }
                                     },
-                                    label = { Text("✉️ Öğrenci Mailleri ($mailCount)", fontSize = 12.sp) }
+                                    label = { Text("✉️ Öğrenci Mailleri ($mailCountForAccount)", fontSize = 12.sp) }
                                 )
                             }
                         }
