@@ -129,6 +129,10 @@ class DeuWebmailClient(
     fun invalidateSession() {
         cachedSession = null
         cachedEmail = null
+        try {
+            client.connectionPool.evictAll()
+        } catch (_: Exception) {
+        }
     }
 
     suspend fun authenticate(email: String, pass: String): WebmailAuthResult = withContext(Dispatchers.IO) {

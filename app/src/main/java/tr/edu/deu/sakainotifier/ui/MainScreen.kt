@@ -1158,6 +1158,8 @@ fun MainScreen(
 
                                             for (acc in currentAccs) {
                                                 stateManager.checkAccountSwitch(acc.username)
+                                                apiClient.invalidateSession()
+                                                webmailClient.invalidateSession()
                                                 val parts = mutableListOf<String>()
 
                                                 // 1. Check Sakai Announcements

@@ -38,6 +38,8 @@ class SakaiNotificationWorker(
 
         for (account in accounts) {
             stateManager.checkAccountSwitch(account.username)
+            apiClient.invalidateSession()
+            webmailClient.invalidateSession()
 
             // 1. Poll Sakai Announcements
             if (checkSakai) {
