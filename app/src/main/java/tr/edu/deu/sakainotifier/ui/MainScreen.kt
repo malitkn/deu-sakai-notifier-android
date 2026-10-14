@@ -46,6 +46,7 @@ import tr.edu.deu.sakainotifier.data.updater.UpdateChecker
 import tr.edu.deu.sakainotifier.notification.NotificationHelper
 import tr.edu.deu.sakainotifier.ui.theme.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import tr.edu.deu.sakainotifier.worker.AlarmScheduler
 import tr.edu.deu.sakainotifier.worker.WorkScheduler
 
 enum class NotificationTypeFilter(val label: String) {
@@ -376,8 +377,10 @@ fun MainScreen(
                                     isMonitoringActive = active
                                     securePrefs.isMonitoringActive = active
                                     if (active || isMailMonitoringActive) {
+                                        AlarmScheduler.scheduleNext(context, selectedInterval)
                                         WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
                                     } else {
+                                        AlarmScheduler.cancel(context)
                                         WorkScheduler.cancel(context)
                                     }
                                     Toast.makeText(context, if (active) "Sakai takibi başlatıldı." else "Sakai takibi durduruldu.", Toast.LENGTH_SHORT).show()
@@ -418,8 +421,10 @@ fun MainScreen(
                                     isMailMonitoringActive = active
                                     securePrefs.isMailMonitoringActive = active
                                     if (active || isMonitoringActive) {
+                                        AlarmScheduler.scheduleNext(context, selectedInterval)
                                         WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
                                     } else {
+                                        AlarmScheduler.cancel(context)
                                         WorkScheduler.cancel(context)
                                     }
                                     Toast.makeText(context, if (active) "Öğrenci e-postası takibi başlatıldı." else "Öğrenci e-postası takibi durduruldu.", Toast.LENGTH_SHORT).show()
@@ -1047,6 +1052,7 @@ fun MainScreen(
                                         selectedInterval = minutes
                                         securePrefs.pollIntervalMinutes = minutes
                                         if (isMonitoringActive || isMailMonitoringActive) {
+                                            AlarmScheduler.scheduleNext(context, minutes)
                                             WorkScheduler.schedule(context, minutes, forceUpdate = true)
                                         }
                                     },
