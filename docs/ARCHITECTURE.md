@@ -159,6 +159,6 @@ deu-sakai-notifier-android/
 ### Task 9: Live Service Status Card, Full Announcement Persistence & Expandable Details (v1.3.0)
 - [x] 9.1: `MainScreen.kt` içerisine canlı arka plan durum göstergesi (aktiflik durumu, son kontrol ve tahmini sonraki kontrol zamanı) kartını ekle
 - [x] 9.2: `SakaiNotification.kt` ve `SakaiParser.kt` içinde tüm duyuru metnini eksiksiz yakalama ve portal fallback URL mantığını kodla
-- [ ] 9.3: `NotificationHelper.kt` içinde sistem bildirimleri için `BigTextStyle` maksimum metin sınırını ve tam açıklama aktarımını kodla
+- [x] 9.3: `NotificationHelper.kt` içinde sistem bildirimleri için `BigTextStyle` maksimum metin sınırını ve tam açıklama aktarımını kodla
 - [ ] 9.4: `MainScreen.kt` üzerindeki bildirim kartlarına genişlet/daralt ("Daha Fazla Göster") ve her zaman çalışan portal yönlendirmesini entegre et
 - [ ] 9.5: Sürümü `1.3.0` (versionCode 22) olarak güncelle ve değişiklikleri doğrula

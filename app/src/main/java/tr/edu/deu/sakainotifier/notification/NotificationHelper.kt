@@ -104,17 +104,36 @@ object NotificationHelper {
             "${userPrefix}${notification.title}"
         }
 
-        val displayBody = notification.body ?: if (notification.isEmail) {
+        val displayBody = notification.body?.takeIf { it.isNotBlank() } ?: if (notification.isEmail) {
             "Yeni bir öğrenci e-postası alındı."
         } else {
             "Yeni bir DEU Sakai duyurusu yayınlandı."
         }
 
+        // Android SystemUI BigTextStyle safe maximum boundary (~4500 chars) to prevent TransactionTooLargeException while displaying the absolute maximum possible announcement content in notification shade
+        val MAX_SYSTEM_NOTIFICATION_CHARS = 4500
+        val notificationBigText = if (displayBody.length > MAX_SYSTEM_NOTIFICATION_CHARS) {
+            displayBody.take(MAX_SYSTEM_NOTIFICATION_CHARS) + "\n\n...(Tamamını görmek için dokunun)"
+        } else {
+            displayBody
+        }
+
+        val summaryCategory = if (notification.isEmail) {
+            "DEU Öğrenci E-postası"
+        } else {
+            notification.siteTitle?.ifBlank { "DEU Sakai" } ?: "DEU Sakai"
+        }
+
+        val bigTextStyle = NotificationCompat.BigTextStyle()
+            .bigText(notificationBigText)
+            .setBigContentTitle(displayTitle)
+            .setSummaryText(summaryCategory)
+
         val builder = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(if (notification.isEmail) android.R.drawable.ic_dialog_email else android.R.drawable.ic_popup_reminder)
             .setContentTitle(displayTitle)
-            .setContentText(displayBody)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(displayBody))
+            .setContentText(displayBody.take(140))
+            .setStyle(bigTextStyle)
             .setGroup(groupKey)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
