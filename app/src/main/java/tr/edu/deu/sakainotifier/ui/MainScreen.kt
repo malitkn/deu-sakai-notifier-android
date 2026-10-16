@@ -1715,11 +1715,13 @@ fun NotificationItemCard(
     )
 
     val currentTheme = themes[accountIndex % themes.size]
+    var isExpanded by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp)),
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { isExpanded = !isExpanded },
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
         ),
@@ -1835,33 +1837,51 @@ fun NotificationItemCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            // Body
+            // Body with Expand / Collapse
             notif.body?.let { bodyText ->
-                Text(
-                    text = bodyText,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    lineHeight = 18.sp,
-                    maxLines = 4
-                )
+                val isLong = bodyText.length > 180 || bodyText.lines().size > 4
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = bodyText,
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp,
+                        maxLines = if (isExpanded) Int.MAX_VALUE else 4
+                    )
+                    if (isLong) {
+                        Text(
+                            text = if (isExpanded) "▲ Daha Az Göster" else "▼ Tamamını Oku (Daha Fazla Göster)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .clickable { isExpanded = !isExpanded }
+                                .padding(vertical = 4.dp)
+                        )
+                    }
+                }
             }
 
-            // Link Action
-            notif.url?.let { link ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Text(
-                        text = if (notif.isEmail) "Webmail'e Git ↗" else "Duyuruyu Aç ↗",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier
-                            .clickable { onOpenUrl(link) }
-                            .padding(horizontal = 4.dp, vertical = 2.dp)
-                    )
-                }
+            // Link Action (Always fallback to portal/webmail if null or blank)
+            val effectiveUrl = notif.url?.takeIf { it.isNotBlank() } ?: if (notif.isEmail) {
+                "https://ogrmail.deu.edu.tr/"
+            } else {
+                "https://online.deu.edu.tr/portal"
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Text(
+                    text = if (notif.isEmail) "Webmail'e Git ↗" else "Duyuruyu Aç ↗",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable { onOpenUrl(effectiveUrl) }
+                        .padding(horizontal = 4.dp, vertical = 2.dp)
+                )
             }
         }
     }
