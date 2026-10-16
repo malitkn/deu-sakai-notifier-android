@@ -106,9 +106,9 @@ fun MainScreen(
 
     val currentAppVersion = remember {
         try {
-            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.7"
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "1.2.8"
         } catch (_: Exception) {
-            "1.2.7"
+            "1.2.8"
         }
     }
 
