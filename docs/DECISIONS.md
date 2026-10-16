@@ -78,6 +78,10 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
 * **Gerekçe:** Öğrencinin gelen kutusunda "Giriş" kelimesi geçen (örn: "Ders Kayıt Girişi", "Girişimcilik") geçerli bir e-posta bulunduğunda istemcinin bunu oturum düşmesi zannedip döngüye girmesini ve "Yeniden bağlanma sonrasında e-postalar alınamadı" hatası vermesini engellemek.
 * **Etkilenen Kapsam:** `DeuWebmailClient.kt`, `MainScreen.kt`.
 
-
-
-
+### [DEC-011] Kalıcı Release Keystore (Sabit İmza) ve Paket Çakışması Önleme
+* **Tarih:** 2026-10-16
+* **Karar:** GitHub Actions CI derleme hattında her sürümde rastgele anahtar üreten geçici `keytool -genkey` adımı kaldırılmış; tek seferlik üretilen kalıcı release keystore GitHub Actions Secret (`RELEASE_KEYSTORE_BASE64`) içerisine tanımlanarak tüm sürümlerin aynı sertifika ile imzalanması sağlanmıştır.
+* **Gerekçe:** Android işletim sisteminde `INSTALL_FAILED_UPDATE_INCOMPATIBLE` ("Paket çakıştığı için kurulamadı") imza uyuşmazlığı hatasını engellemek; öğrencilerin yeni sürüm APK'yı indirdiklerinde eski sürümü silmek zorunda kalmadan doğrudan güncelleyebilmesini, bu sayede kayıtlı hesaplarının ve sistem bildirim izinlerinin eksiksiz korunmasını güvenceye almak.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *Her Derlemede Rastgele Keystore (Mevcut Durum):* Her sürümde imza değiştiği için güncelleme imkansız hale geliyor ve kullanıcı her defasında uygulamayı silip hesaplarını baştan girmek zorunda kalıyordu.
+* **Etkilenen Kapsam:** `.github/workflows/build-apk.yml`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`.
