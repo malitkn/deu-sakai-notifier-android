@@ -92,8 +92,6 @@ data class SakaiNotification(
 
             val publishedAt = formatPublishedDate(rawDate)
 
-            val isEmail = json.optBoolean("isEmail", false)
-
             return SakaiNotification(
                 sakaiId = sakaiId,
                 contentHash = contentHash,
