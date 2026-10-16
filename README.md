@@ -26,6 +26,9 @@ Herhangi bir mağazaya ihtiyaç duymadan doğrudan APK olarak kurulabilir:
 3. **Giriş Yap:** Öğrenci numaranızı, şifrenizi ve dilerseniz öğrenci e-posta adresinizi girip *"Hesabı Doğrula ve Kaydet"* butonuna basın. (ÇAP/yan dal yapıyorsanız ikinci hesabınızı da ekleyebilirsiniz.)
 4. **Takibi Başlatın:** *"Sakai Takibi"* ve/veya *"Öğrenci E-postası Takibi"* anahtarını açın. Artık tüm yeni Sakai duyuruları ve öğrenci e-postaları anında cebinizde!
 
+> 💡 **Sürüm Güncellemeleri Hakkında:**  
+> `v1.2.9` sürümünden itibaren tüm APK sürümleri kalıcı ve sabit bir dijital sertifika ile imzalanmaktadır. Yeni bir sürüm çıktığında mevcut uygulamayı silmeden doğrudan üzerine kurabilir (in-place update); kayıtlı öğrenci hesaplarınızı ve bildirim izinlerinizi kaybetmeden anında güncelleyebilirsiniz. *(Eski `v1.2.8` veya öncesi bir sürümden `v1.2.9`'a geçerken imza altyapısı değiştiği için bir defaya mahsus eski sürümü silip `v1.2.9`'u kurmanız gerekir).*
+
 ---
 
 ### ⚠️ Kesintisiz Bildirim İçin Önemli Cihaz Ayarları

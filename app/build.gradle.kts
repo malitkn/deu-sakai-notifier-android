@@ -32,9 +32,9 @@ android {
             val ksFile = file("release.keystore")
             if (ksFile.exists()) {
                 storeFile = ksFile
-                storePassword = "deusakai2026password"
-                keyAlias = "deusakai"
-                keyPassword = "deusakai2026password"
+                storePassword = System.getenv("RELEASE_KEYSTORE_PASSWORD") ?: "deusakai2026password"
+                keyAlias = System.getenv("RELEASE_KEY_ALIAS") ?: "deusakai"
+                keyPassword = System.getenv("RELEASE_KEY_PASSWORD") ?: "deusakai2026password"
             } else {
                 initWith(getByName("debug"))
             }
