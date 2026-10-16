@@ -72,5 +72,12 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
 * **Gerekçe:** DEU F5 yük dengeleyicisinin sticky session çerezlerinin kaybolmasını önlemek, açık kalan PHP oturumlarının sonraki hesabı bozmasını engellemek ve Roundcube/WAF brute-force (login throttle) kısıtına takılmamak.
 * **Etkilenen Kapsam:** `DeuWebmailClient.kt`, `MainScreen.kt`, `AlarmReceiver.kt`, `SakaiNotificationWorker.kt`.
 
+### [DEC-010] Webmail Arama Yanıtı Yanlış Pozitif ("Giriş") Hatasının Giderilmesi ve Gelen Kutusu Oturum Isıtması (Inbox Warmup)
+* **Tarih:** 2026-10-16
+* **Karar:** Roundcube AJAX JSON arama yanıtlarında oturum düşmesini yakalamak için kullanılan genel `rawBody.contains("Giriş")` kontrolü kaldırılmış, bunun yerine yanıtın HTML içeriği ve login formu (`rcmloginuser` / `task-login`) varlığı doğrulanacak şekilde düzeltilmiştir. Ayrıca başarılı login sonrasında gelen kutusuna (`INBOX_URL`) doğrudan GET isteği atılarak güncel oturum CSRF belirteci (`requestToken`) ve IMAP oturumu ısıtması sağlanmış; arayüzdeki hata kırpma kısıtı (`take(30)`) genişletilmiştir.
+* **Gerekçe:** Öğrencinin gelen kutusunda "Giriş" kelimesi geçen (örn: "Ders Kayıt Girişi", "Girişimcilik") geçerli bir e-posta bulunduğunda istemcinin bunu oturum düşmesi zannedip döngüye girmesini ve "Yeniden bağlanma sonrasında e-postalar alınamadı" hatası vermesini engellemek.
+* **Etkilenen Kapsam:** `DeuWebmailClient.kt`, `MainScreen.kt`.
+
+
 
 
