@@ -154,4 +154,4 @@ deu-sakai-notifier-android/
 - [x] 8.1: Sabit release keystore oluştur ve GitHub Secrets (`RELEASE_KEYSTORE_BASE64`) içerisine güvenli şekilde kaydet
 - [x] 8.2: `.github/workflows/build-apk.yml` CI derleme hattını sabit keystore'u decode edip kullanacak şekilde güncelle
 - [x] 8.3: `app/build.gradle.kts` ve `README.md` yapılandırmasını kalıcı imza ve in-place güncelleme uyumluluğu ile senkronize et
-- [ ] 8.4: Sürümü `1.2.9` (versionCode 21) olarak güncelle ve değişiklikleri doğrula
+- [x] 8.4: Sürümü `1.2.9` (versionCode 21) olarak güncelle ve değişiklikleri doğrula

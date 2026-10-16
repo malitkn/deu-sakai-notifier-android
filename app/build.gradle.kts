@@ -12,8 +12,8 @@ android {
         applicationId = "tr.edu.deu.sakainotifier"
         minSdk = 24
         targetSdk = 34
-        versionCode = 20
-        versionName = "1.2.8"
+        versionCode = 21
+        versionName = "1.2.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
