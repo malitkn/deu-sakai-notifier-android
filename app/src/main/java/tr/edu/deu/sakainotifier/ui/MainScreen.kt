@@ -78,6 +78,7 @@ fun MainScreen(
     var isMonitoringActive by remember { mutableStateOf(securePrefs.isMonitoringActive) }
     var isMailMonitoringActive by remember { mutableStateOf(securePrefs.isMailMonitoringActive) }
     var selectedInterval by remember { mutableStateOf(securePrefs.pollIntervalMinutes) }
+    var lastCheckTime by remember { mutableStateOf(securePrefs.lastCheckTimestamp) }
 
     var isAddingAccount by remember { mutableStateOf(false) }
     var accountFeedbackText by remember { mutableStateOf<String?>(null) }
@@ -155,6 +156,7 @@ fun MainScreen(
                 }
                 registeredAccounts = securePrefs.getAccounts()
                 recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
+                lastCheckTime = securePrefs.lastCheckTimestamp
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -353,6 +355,83 @@ fun MainScreen(
                                     color = if (isAnyActive) DeuSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
+                            }
+                        }
+
+                        // Live Polling Health & Timestamps Row
+                        val lastCheckDisplay = if (lastCheckTime > 0L) {
+                            val diffMinutes = ((System.currentTimeMillis() - lastCheckTime) / (60 * 1000)).coerceAtLeast(0)
+                            val timeFormatted = java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr", "TR")).format(java.util.Date(lastCheckTime))
+                            if (diffMinutes == 0L) "Az önce ($timeFormatted)" else "$diffMinutes dk önce ($timeFormatted)"
+                        } else {
+                            "Henüz kontrol edilmedi"
+                        }
+
+                        val nextCheckDisplay = if (isAnyActive && lastCheckTime > 0L) {
+                            val nextEstimatedMillis = lastCheckTime + selectedInterval * 60 * 1000L
+                            if (nextEstimatedMillis > System.currentTimeMillis()) {
+                                "~" + java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr", "TR")).format(java.util.Date(nextEstimatedMillis))
+                            } else {
+                                "Kısa süre içinde"
+                            }
+                        } else if (isAnyActive) {
+                            "~$selectedInterval dk sonra"
+                        } else {
+                            "—"
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("🕒", fontSize = 13.sp)
+                                    Column {
+                                        Text(
+                                            text = "Son Kontrol",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                        Text(
+                                            text = lastCheckDisplay,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text("⏳", fontSize = 13.sp)
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "Sonraki Tahmini",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                        )
+                                        Text(
+                                            text = nextCheckDisplay,
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isAnyActive) DeuSuccess else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -1248,6 +1327,8 @@ fun MainScreen(
                                                 manualCheckSuccess = false
                                             }
                                         } finally {
+                                            securePrefs.lastCheckTimestamp = System.currentTimeMillis()
+                                            lastCheckTime = securePrefs.lastCheckTimestamp
                                             isManualChecking = false
                                         }
                                     }
