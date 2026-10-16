@@ -48,14 +48,20 @@ data class SakaiNotification(
                 else -> "Yeni Sakai Bildirimi"
             }
 
-            val body = when {
+            val isEmail = json.optBoolean("isEmail", false)
+
+            val rawBodyCandidate = when {
                 json.has("body") -> json.optString("body")
-                json.has("text") -> json.optString("text")
-                json.has("content") -> json.optString("content")
                 json.has("message") -> json.optString("message")
+                json.has("content") -> json.optString("content")
+                json.has("text") -> json.optString("text")
                 json.has("description") -> json.optString("description")
+                json.has("announcementBody") -> json.optString("announcementBody")
+                json.has("html") -> json.optString("html")
                 else -> null
             }?.takeIf { it.isNotBlank() }
+
+            val body = rawBodyCandidate?.let { stripHtml(it) }?.takeIf { it.isNotBlank() }
 
             val siteTitle = when {
                 json.has("siteTitle") -> json.optString("siteTitle")
@@ -70,7 +76,7 @@ data class SakaiNotification(
                 json.has("link") -> json.optString("link")
                 json.has("portalUrl") -> json.optString("portalUrl")
                 else -> null
-            }?.takeIf { it.isNotBlank() }
+            }?.takeIf { it.isNotBlank() } ?: if (isEmail) "https://ogrmail.deu.edu.tr/" else "https://online.deu.edu.tr/portal"
 
             val rawDate = when {
                 json.has("formattedEventDate") -> json.opt("formattedEventDate")
@@ -186,6 +192,23 @@ data class SakaiNotification(
                 }
             }
             return 0L
+        }
+
+        fun stripHtml(html: String): String {
+            if (!html.contains("<") && !html.contains("&")) return html.trim()
+            return html
+                .replace(Regex("<br\\s*/?>", RegexOption.IGNORE_CASE), "\n")
+                .replace(Regex("</p>", RegexOption.IGNORE_CASE), "\n\n")
+                .replace(Regex("</div>", RegexOption.IGNORE_CASE), "\n")
+                .replace(Regex("<[^>]*>"), "")
+                .replace("&nbsp;", " ")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&#39;", "'")
+                .replace(Regex("\n{3,}"), "\n\n")
+                .trim()
         }
 
         private fun sha256(input: String): String {
