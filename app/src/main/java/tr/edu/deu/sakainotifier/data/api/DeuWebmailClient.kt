@@ -260,6 +260,47 @@ class DeuWebmailClient(
                     return@withContext WebmailAuthResult.InvalidCredentials("Öğrenci e-posta girişi başarısız oldu (HTTP ${postResp.code}).")
                 }
 
+                // Step 3: Warm up the session by loading INBOX to initialize IMAP state and extract authentic session request_token
+                val warmupCookieHeader = accumulatedCookies.entries.joinToString("; ") { "${it.key}=${it.value}" }
+                val targetInboxUrl = if (location.isNotBlank() && !location.contains("_task=login")) {
+                    if (location.startsWith("http")) location else "$BASE_URL$location"
+                } else {
+                    INBOX_URL
+                }
+
+                val inboxRequest = Request.Builder()
+                    .url(targetInboxUrl)
+                    .get()
+                    .header("Referer", LOGIN_URL)
+                    .header("Cookie", warmupCookieHeader)
+                    .header("User-Agent", USER_AGENT)
+                    .build()
+
+                try {
+                    client.newCall(inboxRequest).execute().use { inboxResp ->
+                        val inboxCookieHeaders = inboxResp.headers("Set-Cookie")
+                        accumulatedCookies.putAll(extractCookies(inboxCookieHeaders))
+                        if (accumulatedCookies.containsKey("roundcube_sessid")) {
+                            currentSessId = accumulatedCookies["roundcube_sessid"]!!
+                        }
+                        if (accumulatedCookies.containsKey("roundcube_sessauth")) {
+                            sessAuth = accumulatedCookies["roundcube_sessauth"]
+                        }
+
+                        val inboxHtml = inboxResp.body?.string().orEmpty()
+                        val envTokenPattern = Pattern.compile("[\"']request_token[\"']\\s*:\\s*[\"']([^\"']+)[\"']")
+                        val envMatcher = envTokenPattern.matcher(inboxHtml)
+                        if (envMatcher.find()) {
+                            val extractedToken = envMatcher.group(1)
+                            if (!extractedToken.isNullOrBlank()) {
+                                requestToken = extractedToken
+                            }
+                        }
+                    }
+                } catch (_: Exception) {
+                    // Gracefully keep current requestToken and cookies if warmup has network hiccup
+                }
+
                 val session = WebmailSession(
                     sessId = currentSessId,
                     sessAuth = sessAuth,
