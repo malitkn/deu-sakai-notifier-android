@@ -85,3 +85,9 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
 * **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
   * *Her Derlemede Rastgele Keystore (Mevcut Durum):* Her sürümde imza değiştiği için güncelleme imkansız hale geliyor ve kullanıcı her defasında uygulamayı silip hesaplarını baştan girmek zorunda kalıyordu.
 * **Etkilenen Kapsam:** `.github/workflows/build-apk.yml`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`.
+
+### [DEC-012] Canlı Servis Durumu Göstergesi, Tam Duyuru Metni Saklama ve Genişletilebilir Detay Kartları
+* **Tarih:** 2026-10-16
+* **Karar:** Ana ekranın en üstüne arka plan servisinin çalışıp çalışmadığını, son başarılı kontrol saatini ve bir sonraki tahmini kontrol zamanını gösteren canlı durum kartı eklenmiştir. Sakai duyurularının gövde açıklaması hiçbir kırpılma olmaksızın tam metin olarak saklanmakta; Android sistem bildirimlerinde `BigTextStyle` ile sistemin izin verdiği maksimum metin genişliği kullanılmakta ve uygulama arayüzünde uzun duyurular için genişletilebilir ("Daha Fazla Göster") kart yapısı ile varsayılan portal linki fallback'i sunulmaktadır.
+* **Gerekçe:** Öğrencilerin arka plan yoklamasının aktifliğini teyit edebilmesi, uzun duyuruların kesilmeden bildirim çekmecesinde ve uygulama içinde baştan sona okunabilmesi, duyuru bağlantısı boş gelse dahi tek dokunuşla DEU Sakai portalına erişilebilmesi.
+* **Etkilenen Kapsam:** `SakaiNotification.kt`, `SakaiParser.kt`, `NotificationHelper.kt`, `MainScreen.kt`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`.

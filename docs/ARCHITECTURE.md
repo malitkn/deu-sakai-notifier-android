@@ -155,3 +155,10 @@ deu-sakai-notifier-android/
 - [x] 8.2: `.github/workflows/build-apk.yml` CI derleme hattını sabit keystore'u decode edip kullanacak şekilde güncelle
 - [x] 8.3: `app/build.gradle.kts` ve `README.md` yapılandırmasını kalıcı imza ve in-place güncelleme uyumluluğu ile senkronize et
 - [x] 8.4: Sürümü `1.2.9` (versionCode 21) olarak güncelle ve değişiklikleri doğrula
+
+### Task 9: Live Service Status Card, Full Announcement Persistence & Expandable Details (v1.3.0)
+- [ ] 9.1: `MainScreen.kt` içerisine canlı arka plan durum göstergesi (aktiflik durumu, son kontrol ve tahmini sonraki kontrol zamanı) kartını ekle
+- [ ] 9.2: `SakaiNotification.kt` ve `SakaiParser.kt` içinde tüm duyuru metnini eksiksiz yakalama ve portal fallback URL mantığını kodla
+- [ ] 9.3: `NotificationHelper.kt` içinde sistem bildirimleri için `BigTextStyle` maksimum metin sınırını ve tam açıklama aktarımını kodla
+- [ ] 9.4: `MainScreen.kt` üzerindeki bildirim kartlarına genişlet/daralt ("Daha Fazla Göster") ve her zaman çalışan portal yönlendirmesini entegre et
+- [ ] 9.5: Sürümü `1.3.0` (versionCode 22) olarak güncelle ve değişiklikleri doğrula
