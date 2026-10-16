@@ -390,7 +390,17 @@ class DeuWebmailClient(
                 return null
             }
             val rawBody = response.body?.string().orEmpty()
-            if (rawBody.contains("rcmloginuser") || rawBody.contains("Giriş")) {
+            val trimmedBody = rawBody.trim()
+
+            // Detect if redirected to login page instead of JSON response:
+            // Login page is HTML (<html, <!DOCTYPE) and contains login form / rcmloginuser.
+            // Never check generic Turkish word "Giriş" as student emails may contain it in subject/body!
+            val isHtmlLoginPage = trimmedBody.startsWith("<") && (
+                trimmedBody.contains("rcmloginuser") ||
+                trimmedBody.contains("task-login") ||
+                trimmedBody.contains("_task=login")
+            )
+            if (isHtmlLoginPage || (!trimmedBody.startsWith("{") && trimmedBody.contains("rcmloginuser"))) {
                 return null
             }
             if (!response.isSuccessful) {

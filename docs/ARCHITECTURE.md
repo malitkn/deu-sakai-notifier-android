@@ -145,7 +145,7 @@ deu-sakai-notifier-android/
 - [x] 6.4: Sürümü `1.2.7` (versionCode 19) olarak güncelle ve derleme/test bütünlüğünü doğrula
 
 ### Task 7: Webmail Search False-Positive Resolution, Inbox Session Warmup & Error Truncation Fix (v1.2.8)
-- [ ] 7.1: `DeuWebmailClient.kt` içindeki hatalı `rawBody.contains("Giriş")` kontrolünü kaldırarak JSON arama yanıtlarında oturum düşmesini doğru (HTML login formu tespitiyle) ayrıştır
+- [x] 7.1: `DeuWebmailClient.kt` içindeki hatalı `rawBody.contains("Giriş")` kontrolünü kaldırarak JSON arama yanıtlarında oturum düşmesini doğru (HTML login formu tespitiyle) ayrıştır
 - [ ] 7.2: `DeuWebmailClient.kt` içinde başarılı oturum açma sonrası gelen kutusu (`INBOX`) GET isteği yaparak gerçek oturum token'ı (`requestToken`) ve IMAP oturumunu güvenceye al
 - [ ] 7.3: `MainScreen.kt` üzerinde hata mesajı kırpma (`take(30)`) sınırını genişleterek ve `DeuWebmailClient.kt` içinde açıklayıcı hata nedenlerini koru
 - [ ] 7.4: Sürümü `1.2.8` (versionCode 20) olarak güncelle ve değişiklikleri doğrula
