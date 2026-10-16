@@ -1200,7 +1200,7 @@ fun MainScreen(
                                                     }
                                                 } else {
                                                     anySakaiFail = true
-                                                    val err = fetchRes.exceptionOrNull()?.message?.take(30) ?: "Bağlantı hatası"
+                                                    val err = fetchRes.exceptionOrNull()?.message?.take(80) ?: "Bağlantı hatası"
                                                     parts.add("Sakai: ❌ $err")
                                                 }
 
@@ -1224,7 +1224,7 @@ fun MainScreen(
                                                         }
                                                     } else {
                                                         anyMailFail = true
-                                                        val mErr = mailRes.exceptionOrNull()?.message?.take(30) ?: "sunucuya ulaşılamadı"
+                                                        val mErr = mailRes.exceptionOrNull()?.message?.take(80) ?: "sunucuya ulaşılamadı"
                                                         parts.add("Mail: ⚠️ $mErr")
                                                     }
                                                 }

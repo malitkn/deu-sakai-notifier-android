@@ -357,6 +357,12 @@ class DeuWebmailClient(
         }
     }
 
+    private sealed class SearchResult {
+        data class Success(val notifications: List<SakaiNotification>) : SearchResult()
+        data class SessionExpired(val reason: String) : SearchResult()
+        data class Error(val message: String) : SearchResult()
+    }
+
     suspend fun fetchUnreadEmails(
         email: String,
         pass: String,
@@ -379,24 +385,25 @@ class DeuWebmailClient(
         var session = cachedSession ?: return@withContext Result.failure(Exception("Webmail oturumu başlatılamadı."))
 
         try {
-            val unreadList = performSearchRequest(session, normalizedEmail, studentUsername)
-            if (unreadList != null) {
-                return@withContext Result.success(unreadList)
-            }
-
-            // Session might have expired; retry once
-            cachedSession = null
-            when (val reAuth = authenticate(normalizedEmail, pass)) {
-                is WebmailAuthResult.Success -> {
-                    session = reAuth.session
-                    val retryList = performSearchRequest(session, normalizedEmail, studentUsername)
-                    if (retryList != null) {
-                        return@withContext Result.success(retryList)
+            when (val searchRes = performSearchRequest(session, normalizedEmail, studentUsername)) {
+                is SearchResult.Success -> return@withContext Result.success(searchRes.notifications)
+                is SearchResult.Error -> return@withContext Result.failure(Exception(searchRes.message))
+                is SearchResult.SessionExpired -> {
+                    // Session might have expired; retry once
+                    cachedSession = null
+                    when (val reAuth = authenticate(normalizedEmail, pass)) {
+                        is WebmailAuthResult.Success -> {
+                            session = reAuth.session
+                            when (val retryRes = performSearchRequest(session, normalizedEmail, studentUsername)) {
+                                is SearchResult.Success -> return@withContext Result.success(retryRes.notifications)
+                                is SearchResult.Error -> return@withContext Result.failure(Exception(retryRes.message))
+                                is SearchResult.SessionExpired -> return@withContext Result.failure(Exception("Yeniden bağlanma sonrası e-postalar alınamadı: ${retryRes.reason}"))
+                            }
+                        }
+                        is WebmailAuthResult.InvalidCredentials -> return@withContext Result.failure(Exception(reAuth.message))
+                        is WebmailAuthResult.Error -> return@withContext Result.failure(Exception(reAuth.message, reAuth.cause))
                     }
-                    return@withContext Result.failure(Exception("Yeniden bağlanma sonrasında e-postalar alınamadı."))
                 }
-                is WebmailAuthResult.InvalidCredentials -> return@withContext Result.failure(Exception(reAuth.message))
-                is WebmailAuthResult.Error -> return@withContext Result.failure(Exception(reAuth.message, reAuth.cause))
             }
         } catch (e: IOException) {
             return@withContext Result.failure(Exception("E-posta kontrolünde ağ hatası: ${e.localizedMessage ?: e.message}", e))
@@ -412,7 +419,7 @@ class DeuWebmailClient(
         session: WebmailSession,
         email: String,
         studentUsername: String
-    ): List<SakaiNotification>? {
+    ): SearchResult {
         val timestamp = System.currentTimeMillis()
         val searchUrl = "$BASE_URL/?_task=mail&_action=search&_filter=UNSEEN&_scope=base&_mbox=INBOX&_remote=1&_unlock=loading$timestamp&_=$timestamp"
 
@@ -428,7 +435,7 @@ class DeuWebmailClient(
 
         client.newCall(request).execute().use { response ->
             if (response.code == 401 || response.code in 300..399) {
-                return null
+                return SearchResult.SessionExpired("Oturum süresi doldu veya yönlendirildi (HTTP ${response.code})")
             }
             val rawBody = response.body?.string().orEmpty()
             val trimmedBody = rawBody.trim()
@@ -442,13 +449,14 @@ class DeuWebmailClient(
                 trimmedBody.contains("_task=login")
             )
             if (isHtmlLoginPage || (!trimmedBody.startsWith("{") && trimmedBody.contains("rcmloginuser"))) {
-                return null
+                return SearchResult.SessionExpired("Oturum düştü (Giriş sayfasına yönlendirildi)")
             }
             if (!response.isSuccessful) {
-                return null
+                return SearchResult.Error("Sunucu hatası: HTTP ${response.code}")
             }
 
-            return parseSearchResponse(rawBody, email, studentUsername)
+            val list = parseSearchResponse(rawBody, email, studentUsername)
+            return SearchResult.Success(list)
         }
     }
 
