@@ -27,7 +27,12 @@ object AlarmScheduler {
         }
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val triggerAtMillis = System.currentTimeMillis() + (validatedInterval * 60 * 1000L)
+        var triggerAtMillis = System.currentTimeMillis() + (validatedInterval * 60 * 1000L)
+
+        val securePrefs = SecurePreferencesManager(context)
+        if (securePrefs.isInQuietHours(triggerAtMillis)) {
+            triggerAtMillis = securePrefs.getNextQuietHoursEndMillis(triggerAtMillis)
+        }
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             action = ACTION_CHECK_NOTIFICATIONS

@@ -36,6 +36,12 @@ class AlarmReceiver : BroadcastReceiver() {
             return
         }
 
+        // If triggered during night quiet hours (00:00 - 05:00), skip polling to save battery/data and reschedule for 05:00
+        if (securePrefs.isInQuietHours()) {
+            AlarmScheduler.scheduleNext(context, securePrefs.pollIntervalMinutes)
+            return
+        }
+
         val pendingResult = goAsync()
 
         // Acquire a temporary WakeLock with 25s safety ceiling to guarantee CPU remains
