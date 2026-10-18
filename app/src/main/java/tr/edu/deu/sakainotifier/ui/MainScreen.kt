@@ -77,6 +77,7 @@ fun MainScreen(
 
     var isMonitoringActive by remember { mutableStateOf(securePrefs.isMonitoringActive) }
     var isMailMonitoringActive by remember { mutableStateOf(securePrefs.isMailMonitoringActive) }
+    var isNightQuietHoursEnabled by remember { mutableStateOf(securePrefs.isNightQuietHoursEnabled) }
     var selectedInterval by remember { mutableStateOf(securePrefs.pollIntervalMinutes) }
     var lastCheckTime by remember { mutableStateOf(securePrefs.lastCheckTimestamp) }
 
@@ -157,6 +158,7 @@ fun MainScreen(
                 registeredAccounts = securePrefs.getAccounts()
                 recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                 lastCheckTime = securePrefs.lastCheckTimestamp
+                isNightQuietHoursEnabled = securePrefs.isNightQuietHoursEnabled
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -302,6 +304,7 @@ fun MainScreen(
             // 1. Service Status Card
             item {
                 val isAnyActive = isMonitoringActive || isMailMonitoringActive
+                val isQuietHoursNow = isAnyActive && isNightQuietHoursEnabled && securePrefs.isInQuietHours()
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
@@ -309,7 +312,11 @@ fun MainScreen(
                     ),
                     border = BorderStroke(
                         width = 1.dp,
-                        color = if (isAnyActive) DeuSuccess.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+                        color = when {
+                            isQuietHoursNow -> Color(0xFF7E57C2).copy(alpha = 0.5f)
+                            isAnyActive -> DeuSuccess.copy(alpha = 0.5f)
+                            else -> MaterialTheme.colorScheme.outlineVariant
+                        }
                     )
                 ) {
                     Column(
@@ -325,34 +332,55 @@ fun MainScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (isAnyActive) "Arka Plan Takibi Aktif" else "Arka Plan Takibi Durduruldu",
+                                    text = when {
+                                        isQuietHoursNow -> "Arka Plan Takibi Aktif (Gece Uykusunda)"
+                                        isAnyActive -> "Arka Plan Takibi Aktif"
+                                        else -> "Arka Plan Takibi Durduruldu"
+                                    },
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface,
                                     fontSize = 16.sp
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = if (isAnyActive)
-                                        "Kayıtlı hesaplar her $selectedInterval dakikada bir taranıyor."
-                                    else
-                                        "Bildirimleri almak için aşağıdaki servisleri başlatın.",
+                                    text = when {
+                                        isQuietHoursNow -> "🌙 00:00 - 05:00 saatleri arasında pil ve veri tasarrufu için kontroller duraklatıldı."
+                                        isAnyActive -> "Kayıtlı hesaplar her $selectedInterval dakikada bir taranıyor."
+                                        else -> "Bildirimleri almak için aşağıdaki servisleri başlatın."
+                                    },
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
-                                color = if (isAnyActive) DeuSuccess.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                                color = when {
+                                    isQuietHoursNow -> Color(0xFFEDE7F6)
+                                    isAnyActive -> DeuSuccess.copy(alpha = 0.15f)
+                                    else -> MaterialTheme.colorScheme.surfaceVariant
+                                },
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isAnyActive) DeuSuccess.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
+                                    when {
+                                        isQuietHoursNow -> Color(0xFF673AB7).copy(alpha = 0.4f)
+                                        isAnyActive -> DeuSuccess.copy(alpha = 0.4f)
+                                        else -> MaterialTheme.colorScheme.outlineVariant
+                                    }
                                 )
                             ) {
                                 Text(
-                                    text = if (isAnyActive) "● ÇALIŞIYOR" else "○ DURDURULDU",
+                                    text = when {
+                                        isQuietHoursNow -> "🌙 GECE MODU"
+                                        isAnyActive -> "● ÇALIŞIYOR"
+                                        else -> "○ DURDURULDU"
+                                    },
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp,
-                                    color = if (isAnyActive) DeuSuccess else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = when {
+                                        isQuietHoursNow -> Color(0xFF673AB7)
+                                        isAnyActive -> DeuSuccess
+                                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
                                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                 )
                             }
@@ -367,17 +395,18 @@ fun MainScreen(
                             "Henüz kontrol edilmedi"
                         }
 
-                        val nextCheckDisplay = if (isAnyActive && lastCheckTime > 0L) {
-                            val nextEstimatedMillis = lastCheckTime + selectedInterval * 60 * 1000L
-                            if (nextEstimatedMillis > System.currentTimeMillis()) {
-                                "~" + java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr", "TR")).format(java.util.Date(nextEstimatedMillis))
-                            } else {
-                                "Kısa süre içinde"
+                        val nextCheckDisplay = when {
+                            !isAnyActive -> "—"
+                            isQuietHoursNow -> "05:00 (Gece Sessizliği)"
+                            lastCheckTime > 0L -> {
+                                val nextEstimatedMillis = lastCheckTime + selectedInterval * 60 * 1000L
+                                if (nextEstimatedMillis > System.currentTimeMillis()) {
+                                    "~" + java.text.SimpleDateFormat("HH:mm", java.util.Locale("tr", "TR")).format(java.util.Date(nextEstimatedMillis))
+                                } else {
+                                    "Kısa süre içinde"
+                                }
                             }
-                        } else if (isAnyActive) {
-                            "~$selectedInterval dk sonra"
-                        } else {
-                            "—"
+                            else -> "~$selectedInterval dk sonra"
                         }
 
                         Surface(
@@ -428,7 +457,11 @@ fun MainScreen(
                                             text = nextCheckDisplay,
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
-                                            color = if (isAnyActive) DeuSuccess else MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = when {
+                                                isQuietHoursNow -> Color(0xFF673AB7)
+                                                isAnyActive -> DeuSuccess
+                                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                            }
                                         )
                                     }
                                 }
@@ -517,6 +550,44 @@ fun MainScreen(
                                         WorkScheduler.cancel(context)
                                     }
                                     Toast.makeText(context, if (active) "Öğrenci e-postası takibi başlatıldı." else "Öğrenci e-postası takibi durduruldu.", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+
+                        // Night Quiet Hours Toggle (00:00 - 05:00)
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "🌙 Gece Sessizliği (00:00 - 05:00)",
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = "Gece saatlerinde pil ve veri tasarrufu için takibi duraklatır.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = isNightQuietHoursEnabled,
+                                onCheckedChange = { active ->
+                                    isNightQuietHoursEnabled = active
+                                    securePrefs.isNightQuietHoursEnabled = active
+                                    if (isMonitoringActive || isMailMonitoringActive) {
+                                        AlarmScheduler.scheduleNext(context, selectedInterval)
+                                        WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
+                                    }
+                                    Toast.makeText(
+                                        context,
+                                        if (active) "Gece sessizliği aktif (00:00 - 05:00)." else "Gece sessizliği kapatıldı (7/24 takip).",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             )
                         }

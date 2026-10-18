@@ -167,6 +167,6 @@ deu-sakai-notifier-android/
 - [x] 10.1: `SecurePreferencesManager.kt` içine gece sessizliği tercihi (`isNightQuietHoursEnabled`, varsayılan `true`) ve saat aralığı yardımcı fonksiyonunu (`isInQuietHours`, `getNextQuietHoursEndMillis`) ekle
 - [x] 10.2: `AlarmScheduler.kt` ve `AlarmReceiver.kt` içine gece sessizliği mantığını entegre et: bir sonraki kontrol 00:00 - 05:00 aralığına denk geliyorsa alarmı doğrudan sabah 05:00:00'a kur; gece tetiklenmesi durumunda ağ isteği yapmadan uykuyu koru
 - [x] 10.3: `SakaiNotificationWorker.kt` (WorkManager) içine `isInQuietHours()` kontrolünü ekle; gece aralığında ağ çağrısı yapmadan sessizce `Result.success()` dön
-- [ ] 10.4: `MainScreen.kt` arayüzüne Gece Sessizliği (00:00 - 05:00) ayar kontrolünü ve Canlı Durum Kartında gece aralığında "🌙 Gece Tasarruf Modunda (05:00'te uyanacak)" durum bilgisini entegre et
+- [x] 10.4: `MainScreen.kt` arayüzüne Gece Sessizliği (00:00 - 05:00) ayar kontrolünü ve Canlı Durum Kartında gece aralığında "🌙 Gece Tasarruf Modunda (05:00'te uyanacak)" durum bilgisini entegre et
 - [ ] 10.5: `app/build.gradle.kts` sürümünü `1.3.1` (versionCode 23) olarak güncelle ve değişiklikleri doğrula
 
