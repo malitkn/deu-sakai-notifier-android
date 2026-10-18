@@ -518,7 +518,7 @@ class DeuWebmailClient(
                             body = "Kimden: $sender",
                             siteTitle = sender.ifBlank { "Öğrenci Maili" },
                             url = BASE_URL,
-                            publishedAt = normalizedDate.ifBlank { null },
+                            publishedAt = normalizedDate?.takeIf { it.isNotBlank() },
                             rawJson = metaStr,
                             accountUsername = normalizedAccount,
                             isEmail = true
