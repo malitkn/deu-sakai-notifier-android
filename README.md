@@ -11,7 +11,7 @@ Dokuz Eylül Üniversitesi Sakai LMS sisteminde bildirimlerin çalışmaması/ge
 * 👥 **Çoklu Hesap Desteği (ÇAP & Yan Dal):** Çift anadal (ÇAP) veya yan dal yapan öğrenciler için birden fazla hesabı aynı anda takip eder. Bildirimler ilgili öğrenci numarasıyla etiketlenir (`2021123456: [Ders] Başlık` veya `✉️ 2021123456: [Gönderen] Konu`).
 * ✏️ **Kolay Hesap Düzenleme:** Önceden eklediğiniz hesapların bilgilerini veya e-posta adresini dilediğiniz zaman düzenleyip güncelleyebilirsiniz.
 * 🔒 **%100 Güvenli (Sıfır Harici Sunucu):** Giriş bilgileriniz harici hiçbir sunucuya gitmez. Tamamen kendi telefonunuzda, cihazın donanım kasasında (`Android KeyStore` & `EncryptedSharedPreferences`) şifrelenerek saklanır.
-* 🔋 **Pil Dostu & Akıllı Takip:** Arka planda Android'in modern `WorkManager` altyapısıyla çalışır, şarj tüketmez.
+* 🔋 **Pil Dostu & Akıllı Gece Takibi:** Arka planda hibrit `AlarmManager` ve `WorkManager` altyapısıyla çalışır; gece 00:00 - 05:00 saatleri arasında derin uyku moduna geçerek pil ve hücresel veri tüketimini sıfıra indirir.
 * 🚀 **Otomatik Güncelleme Uyarısı:** Yeni bir sürüm çıktığında uygulama içerisinden tek tıkla doğrudan güncelleyebilirsiniz.
 * 🗑️ **Geçmişi Temizleme & Filtreleme:** Bildirimlerinizi öğrenci numarasına göre filtreleyebilir veya geçmişi tek tıkla temizleyebilirsiniz.
 
