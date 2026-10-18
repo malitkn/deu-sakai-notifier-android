@@ -30,6 +30,11 @@ class SakaiNotificationWorker(
             return@withContext Result.success()
         }
 
+        // Quiet hours protection: skip network polling between 00:00 - 05:00 to save power & data
+        if (securePrefs.isInQuietHours()) {
+            return@withContext Result.success()
+        }
+
         val accounts = securePrefs.getAccounts()
         if (accounts.isEmpty()) {
             return@withContext Result.success()
