@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKeys
 import org.json.JSONArray
+import java.util.Calendar
 import tr.edu.deu.sakainotifier.data.model.SakaiAccount
 
 class SecurePreferencesManager(context: Context) {
@@ -32,10 +33,12 @@ class SecurePreferencesManager(context: Context) {
         private const val KEY_MONITORING_ACTIVE = "key_monitoring_active"
         private const val KEY_MAIL_MONITORING_ACTIVE = "key_mail_monitoring_active"
         private const val KEY_LAST_CHECK_TIME = "key_last_check_timestamp"
+        private const val KEY_NIGHT_QUIET_HOURS = "key_night_quiet_hours_enabled"
 
         // ENFORCED ARCHITECTURAL MINIMUM: 20 Minutes
         const val MIN_POLL_INTERVAL_MINUTES = 20
         const val DEFAULT_POLL_INTERVAL_MINUTES = 20
+        const val DEFAULT_NIGHT_QUIET_HOURS = true
     }
 
     var username: String
@@ -68,6 +71,46 @@ class SecurePreferencesManager(context: Context) {
     var lastCheckTimestamp: Long
         get() = prefs.getLong(KEY_LAST_CHECK_TIME, 0L)
         set(value) = prefs.edit().putLong(KEY_LAST_CHECK_TIME, value).apply()
+
+    var isNightQuietHoursEnabled: Boolean
+        get() = prefs.getBoolean(KEY_NIGHT_QUIET_HOURS, DEFAULT_NIGHT_QUIET_HOURS)
+        set(value) = prefs.edit().putBoolean(KEY_NIGHT_QUIET_HOURS, value).apply()
+
+    /**
+     * Checks if the given timestamp (or current time) falls into the 00:00 - 05:00 quiet hours window.
+     * When quiet hours are active, background network requests are skipped to save battery and network.
+     */
+    fun isInQuietHours(timeMillis: Long = System.currentTimeMillis()): Boolean {
+        if (!isNightQuietHoursEnabled) return false
+        val cal = Calendar.getInstance().apply { timeInMillis = timeMillis }
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
+        // 00:00:00 to 04:59:59 (hours 0, 1, 2, 3, 4)
+        return hour in 0..4
+    }
+
+    /**
+     * Calculates the exact epoch millis for the next 05:00:00 AM wake-up time.
+     * If the given timestamp is currently within 00:00 - 04:59:59, advances to 05:00:00 AM of the same day.
+     */
+    fun getNextQuietHoursEndMillis(referenceMillis: Long = System.currentTimeMillis()): Long {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = referenceMillis
+            val hour = get(Calendar.HOUR_OF_DAY)
+            if (hour in 0..4) {
+                set(Calendar.HOUR_OF_DAY, 5)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            } else {
+                add(Calendar.DAY_OF_YEAR, 1)
+                set(Calendar.HOUR_OF_DAY, 5)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+        }
+        return cal.timeInMillis
+    }
 
     fun getAccounts(): List<SakaiAccount> {
         val raw = prefs.getString(KEY_ACCOUNTS_JSON, null)
