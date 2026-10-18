@@ -170,3 +170,10 @@ deu-sakai-notifier-android/
 - [x] 10.4: `MainScreen.kt` arayüzüne Gece Sessizliği (00:00 - 05:00) ayar kontrolünü ve Canlı Durum Kartında gece aralığında "🌙 Gece Tasarruf Modunda (05:00'te uyanacak)" durum bilgisini entegre et
 - [x] 10.5: `app/build.gradle.kts` sürümünü `1.3.1` (versionCode 23) olarak güncelle ve değişiklikleri doğrula
 
+### Task 11: Robust Webmail Date Resolution & Chronological Sorting Fix (v1.3.1)
+- [x] 11.1: `SakaiNotification.kt` içine `parseDateToMillis` fonksiyonu eklenerek epoch, bağıl ("Bugün", "Dün", "HH:mm"), Türkçe ay isimli ("18 Eki 14:30") ve standart ("dd.MM.yyyy HH:mm") tarihlerin milisaniye dönüşümü kodlandı
+- [x] 11.2: `DeuWebmailClient.kt` içine Roundcube `timestamp`, `mdate`, `internaldate`, `date_raw` ve normalize edilmiş tarih çıkarımı entegre edildi
+- [x] 11.3: `NotificationStateManager.kt` içine bildirim deserialization aşamasında otomatik tarih normalizasyonu ve mutlak kronolojik sıralama düzeltmesi eklendi
+- [x] 11.4: `SakaiNotificationDateTest.kt` ile tarih ayrıştırma, bağıl zaman ve sıralama senaryoları birim testleri ile doğrulandı
+
+

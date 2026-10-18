@@ -273,7 +273,7 @@ class NotificationStateManager(context: Context) {
                         body = obj.optString("body").takeIf { it.isNotBlank() },
                         siteTitle = obj.optString("siteTitle").takeIf { it.isNotBlank() },
                         url = obj.optString("url").takeIf { it.isNotBlank() },
-                        publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() },
+                        publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() }?.let { SakaiNotification.formatPublishedDate(it) ?: it },
                         rawJson = obj.toString(),
                         accountUsername = accUser,
                         isEmail = obj.optBoolean("isEmail", false)

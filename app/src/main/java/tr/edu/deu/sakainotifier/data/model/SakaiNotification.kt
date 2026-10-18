@@ -3,6 +3,7 @@ package tr.edu.deu.sakainotifier.data.model
 import org.json.JSONObject
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
@@ -110,86 +111,203 @@ data class SakaiNotification(
          * Normalizes epoch timestamps (float or integer, milliseconds or seconds)
          * or ISO-8601 strings into a human-readable date string (e.g. "11.10.2026 17:07").
          */
-        fun formatPublishedDate(rawVal: Any?): String? {
+        /**
+         * Robustly parses arbitrary date representations into epoch milliseconds:
+         * 1. Epoch timestamps (numeric seconds or milliseconds, string or number)
+         * 2. Relative times: "HH:mm" (today), "Bugün HH:mm", "Dün HH:mm", "Today HH:mm", "Yesterday HH:mm"
+         * 3. Turkish month strings: "dd MMM yyyy HH:mm", "dd MMM HH:mm", "dd MMMM yyyy HH:mm" (with current year fallback)
+         * 4. Short day/month: "dd.MM HH:mm", "dd/MM HH:mm"
+         * 5. Standard formats: "dd.MM.yyyy HH:mm[:ss]", "dd/MM/yyyy HH:mm[:ss]", "dd-MM-yyyy HH:mm[:ss]", "dd.MM.yyyy", etc.
+         * 6. ISO-8601 & SQL timestamps
+         * 7. RFC 2822 email timestamps
+         */
+        fun parseDateToMillis(rawVal: Any?): Long? {
             if (rawVal == null || rawVal == JSONObject.NULL) return null
 
             val rawStr = rawVal.toString().trim()
             if (rawStr.isEmpty() || rawStr.equals("null", ignoreCase = true)) return null
 
-            // Check if numeric (epoch timestamp)
+            val turkeyZone = TimeZone.getTimeZone("GMT+3")
+
+            // 1. Check if numeric (epoch timestamp in seconds or milliseconds)
             val numericTs = rawStr.toDoubleOrNull()
             if (numericTs != null && numericTs > 1e7) {
-                val millis = if (numericTs > 1e11) {
+                return if (numericTs > 1e11) {
                     numericTs.toLong()
                 } else {
                     (numericTs * 1000).toLong()
                 }
+            }
+
+            // 2. Relative dates: "Bugün 14:30", "Bugün, 14:30", "Today 14:30"
+            val todayMatch = Regex("""^(?:bugün|today)[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?${'$'}""", RegexOption.IGNORE_CASE).find(rawStr)
+            if (todayMatch != null) {
+                val cal = Calendar.getInstance(turkeyZone)
+                val hour = todayMatch.groupValues[1].toInt()
+                val min = todayMatch.groupValues[2].toInt()
+                val sec = todayMatch.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+                cal.set(Calendar.HOUR_OF_DAY, hour)
+                cal.set(Calendar.MINUTE, min)
+                cal.set(Calendar.SECOND, sec)
+                cal.set(Calendar.MILLISECOND, 0)
+                return cal.timeInMillis
+            }
+
+            // 3. Relative dates: "Dün 14:30", "Dün, 14:30", "Yesterday 14:30"
+            val yesterdayMatch = Regex("""^(?:dün|yesterday)[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?${'$'}""", RegexOption.IGNORE_CASE).find(rawStr)
+            if (yesterdayMatch != null) {
+                val cal = Calendar.getInstance(turkeyZone)
+                cal.add(Calendar.DAY_OF_YEAR, -1)
+                val hour = yesterdayMatch.groupValues[1].toInt()
+                val min = yesterdayMatch.groupValues[2].toInt()
+                val sec = yesterdayMatch.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+                cal.set(Calendar.HOUR_OF_DAY, hour)
+                cal.set(Calendar.MINUTE, min)
+                cal.set(Calendar.SECOND, sec)
+                cal.set(Calendar.MILLISECOND, 0)
+                return cal.timeInMillis
+            }
+
+            // 4. Time only: "14:30", "09:15:00" (Roundcube default for emails received today)
+            val timeOnlyMatch = Regex("""^(\d{1,2}):(\d{2})(?::(\d{2}))?${'$'}""").find(rawStr)
+            if (timeOnlyMatch != null) {
+                val cal = Calendar.getInstance(turkeyZone)
+                val hour = timeOnlyMatch.groupValues[1].toInt()
+                val min = timeOnlyMatch.groupValues[2].toInt()
+                val sec = timeOnlyMatch.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+                cal.set(Calendar.HOUR_OF_DAY, hour)
+                cal.set(Calendar.MINUTE, min)
+                cal.set(Calendar.SECOND, sec)
+                cal.set(Calendar.MILLISECOND, 0)
+                return cal.timeInMillis
+            }
+
+            // 5. Turkish month names with or without year (e.g. "18 Eki 14:30", "18 Eki 2026 14:30", "18 Ekim 2026")
+            val monthTextMatch = Regex("""^(\d{1,2})\s+([a-zA-ZçğıöşüÇĞİÖŞÜ]+)(?:\s+(\d{4}))?(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?${'$'}""").find(rawStr)
+            if (monthTextMatch != null) {
+                val day = monthTextMatch.groupValues[1].toInt()
+                val monthWord = monthTextMatch.groupValues[2].lowercase(Locale("tr", "TR"))
+                val turkishMonths = mapOf(
+                    "oca" to 0, "ocak" to 0, "jan" to 0, "january" to 0,
+                    "şub" to 1, "şubat" to 1, "sub" to 1, "subat" to 1, "feb" to 1, "february" to 1,
+                    "mar" to 2, "mart" to 2, "march" to 2,
+                    "nis" to 3, "nisan" to 3, "apr" to 3, "april" to 3,
+                    "may" to 4, "mayıs" to 4, "mayis" to 4,
+                    "haz" to 5, "haziran" to 5, "jun" to 5, "june" to 5,
+                    "tem" to 6, "temmuz" to 6, "jul" to 6, "july" to 6,
+                    "ağu" to 7, "ağustos" to 7, "agu" to 7, "agustos" to 7, "aug" to 7, "august" to 7,
+                    "eyl" to 8, "eylül" to 8, "eylul" to 8, "sep" to 8, "september" to 8,
+                    "eki" to 9, "ekim" to 9, "oct" to 9, "october" to 9,
+                    "kas" to 10, "kasım" to 10, "kasim" to 10, "nov" to 10, "november" to 10,
+                    "ara" to 11, "aralık" to 11, "aralik" to 11, "dec" to 11, "december" to 11
+                )
+                val monthIdx = turkishMonths[monthWord]
+                if (monthIdx != null) {
+                    val cal = Calendar.getInstance(turkeyZone)
+                    val year = monthTextMatch.groupValues.getOrNull(3)?.toIntOrNull() ?: cal.get(Calendar.YEAR)
+                    val hour = monthTextMatch.groupValues.getOrNull(4)?.toIntOrNull() ?: 0
+                    val min = monthTextMatch.groupValues.getOrNull(5)?.toIntOrNull() ?: 0
+                    val sec = monthTextMatch.groupValues.getOrNull(6)?.toIntOrNull() ?: 0
+                    cal.set(Calendar.YEAR, year)
+                    cal.set(Calendar.MONTH, monthIdx)
+                    cal.set(Calendar.DAY_OF_MONTH, day)
+                    cal.set(Calendar.HOUR_OF_DAY, hour)
+                    cal.set(Calendar.MINUTE, min)
+                    cal.set(Calendar.SECOND, sec)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    return cal.timeInMillis
+                }
+            }
+
+            // 6. Day.Month without year: "18.10 14:30" or "18/10 14:30"
+            val shortDayMonthMatch = Regex("""^(\d{1,2})[./](\d{1,2})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?${'$'}""").find(rawStr)
+            if (shortDayMonthMatch != null) {
+                val day = shortDayMonthMatch.groupValues[1].toInt()
+                val month = shortDayMonthMatch.groupValues[2].toInt() - 1
+                if (month in 0..11 && day in 1..31) {
+                    val cal = Calendar.getInstance(turkeyZone)
+                    val hour = shortDayMonthMatch.groupValues.getOrNull(3)?.toIntOrNull() ?: 0
+                    val min = shortDayMonthMatch.groupValues.getOrNull(4)?.toIntOrNull() ?: 0
+                    val sec = shortDayMonthMatch.groupValues.getOrNull(5)?.toIntOrNull() ?: 0
+                    cal.set(Calendar.MONTH, month)
+                    cal.set(Calendar.DAY_OF_MONTH, day)
+                    cal.set(Calendar.HOUR_OF_DAY, hour)
+                    cal.set(Calendar.MINUTE, min)
+                    cal.set(Calendar.SECOND, sec)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    return cal.timeInMillis
+                }
+            }
+
+            // 7. Comprehensive array of standard date and time formats
+            val standardPatterns = arrayOf(
+                // Turkish standard dot
+                "dd.MM.yyyy HH:mm:ss",
+                "dd.MM.yyyy HH:mm",
+                "dd.MM.yyyy",
+                // Slash notation
+                "dd/MM/yyyy HH:mm:ss",
+                "dd/MM/yyyy HH:mm",
+                "dd/MM/yyyy",
+                // Dash notation
+                "dd-MM-yyyy HH:mm:ss",
+                "dd-MM-yyyy HH:mm",
+                "dd-MM-yyyy",
+                // ISO-8601 / SQL
+                "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
+                "yyyy-MM-dd'T'HH:mm:ssXXX",
+                "yyyy-MM-dd'T'HH:mm:ss'Z'",
+                "yyyy-MM-dd'T'HH:mm:ss",
+                "yyyy-MM-dd HH:mm:ss",
+                "yyyy-MM-dd HH:mm",
+                "yyyy-MM-dd",
+                // RFC 2822
+                "EEE, dd MMM yyyy HH:mm:ss Z",
+                "EEE, dd MMM yyyy HH:mm:ss z",
+                "dd MMM yyyy HH:mm:ss Z",
+                "dd MMM yyyy HH:mm:ss"
+            )
+
+            for (pattern in standardPatterns) {
+                try {
+                    val parser = SimpleDateFormat(pattern, Locale.ROOT)
+                    parser.timeZone = turkeyZone
+                    val parsed = parser.parse(rawStr)
+                    if (parsed != null) {
+                        return parsed.time
+                    }
+                } catch (_: Exception) {
+                }
+            }
+
+            return null
+        }
+
+        /**
+         * Normalizes epoch timestamps, relative time strings or ISO-8601 strings
+         * into a human-readable date string (e.g. "18.10.2026 17:07").
+         */
+        fun formatPublishedDate(rawVal: Any?): String? {
+            val millis = parseDateToMillis(rawVal)
+            if (millis != null) {
                 return try {
                     val sdf = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR"))
                     sdf.timeZone = TimeZone.getTimeZone("GMT+3")
                     sdf.format(Date(millis))
                 } catch (_: Exception) {
-                    rawStr
+                    rawVal?.toString()?.trim()
                 }
             }
-
-            // Check ISO-8601 / standard SQL timestamp patterns
-            if (rawStr.contains("T") || (rawStr.length >= 19 && rawStr.getOrNull(4) == '-' && rawStr.getOrNull(7) == '-')) {
-                val patterns = arrayOf(
-                    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-                    "yyyy-MM-dd'T'HH:mm:ssXXX",
-                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                    "yyyy-MM-dd'T'HH:mm:ss",
-                    "yyyy-MM-dd HH:mm:ss"
-                )
-                for (pattern in patterns) {
-                    try {
-                        val parser = SimpleDateFormat(pattern, Locale.ROOT)
-                        val parsedDate = parser.parse(rawStr)
-                        if (parsedDate != null) {
-                            val outFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("tr", "TR"))
-                            outFormat.timeZone = TimeZone.getTimeZone("GMT+3")
-                            return outFormat.format(parsedDate)
-                        }
-                    } catch (_: Exception) {
-                        // try next pattern
-                    }
-                }
-            }
-
-            return rawStr
+            return rawVal?.toString()?.trim()?.takeIf { it.isNotEmpty() && !it.equals("null", ignoreCase = true) }
         }
 
+        /**
+         * Parses arbitrary date string or epoch into numeric milliseconds for sorting.
+         * Guarantees that valid Turkish dates, relative dates, and epoch timestamps
+         * are accurately converted rather than defaulting to 0L.
+         */
         fun parsePublishedMillis(rawVal: Any?): Long {
-            if (rawVal == null || rawVal == JSONObject.NULL) return 0L
-            val rawStr = rawVal.toString().trim()
-            if (rawStr.isEmpty() || rawStr.equals("null", ignoreCase = true)) return 0L
-
-            val numericTs = rawStr.toDoubleOrNull()
-            if (numericTs != null && numericTs > 1e7) {
-                return if (numericTs > 1e11) numericTs.toLong() else (numericTs * 1000).toLong()
-            }
-
-            if (rawStr.contains("T") || (rawStr.length >= 19 && rawStr.getOrNull(4) == '-' && rawStr.getOrNull(7) == '-')) {
-                val patterns = arrayOf(
-                    "yyyy-MM-dd'T'HH:mm:ss.SSSXXX",
-                    "yyyy-MM-dd'T'HH:mm:ssXXX",
-                    "yyyy-MM-dd'T'HH:mm:ss'Z'",
-                    "yyyy-MM-dd'T'HH:mm:ss",
-                    "yyyy-MM-dd HH:mm:ss"
-                )
-                for (pattern in patterns) {
-                    try {
-                        val parser = SimpleDateFormat(pattern, Locale.ROOT)
-                        val parsedDate = parser.parse(rawStr)
-                        if (parsedDate != null) {
-                            return parsedDate.time
-                        }
-                    } catch (_: Exception) {
-                    }
-                }
-            }
-            return 0L
+            return parseDateToMillis(rawVal) ?: 0L
         }
 
         fun stripHtml(html: String): String {

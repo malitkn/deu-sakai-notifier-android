@@ -489,13 +489,26 @@ class DeuWebmailClient(
                     val fromtoHtml = metaObj.optString("fromto", "")
                     val sender = parseSender(fromtoHtml)
 
-                    val date = metaObj.optString("date", "")
-                    val normalizedDate = SakaiNotification.formatPublishedDate(date) ?: date
+                    // Robust date resolution: Roundcube provides numeric timestamps in 'timestamp', 'mdate', 'internaldate', or 'date_raw'
+                    // Fall back to localized display string in 'date' or current timestamp
+                    val rawDateCandidate: Any? = when {
+                        metaObj.has("timestamp") && !metaObj.isNull("timestamp") -> metaObj.opt("timestamp")
+                        metaObj.has("mdate") && !metaObj.isNull("mdate") -> metaObj.opt("mdate")
+                        metaObj.has("internaldate") && !metaObj.isNull("internaldate") -> metaObj.opt("internaldate")
+                        metaObj.has("date_raw") && !metaObj.isNull("date_raw") -> metaObj.opt("date_raw")
+                        metaObj.has("raw_date") && !metaObj.isNull("raw_date") -> metaObj.opt("raw_date")
+                        metaObj.has("date") && !metaObj.isNull("date") -> metaObj.opt("date")
+                        else -> null
+                    }
+
+                    val normalizedDate = SakaiNotification.formatPublishedDate(rawDateCandidate)
+                        ?: metaObj.optString("date", "").trim().takeIf { it.isNotBlank() }
+                        ?: SakaiNotification.formatPublishedDate(System.currentTimeMillis())
 
                     val normalizedAccount = studentUsername.trim().lowercase()
                     val shortAccount = normalizedAccount.substringBefore("@")
                     val notifId = "mail_${shortAccount}_$msgId"
-                    val contentHash = sha256("$notifId:$sender:$subject:$date")
+                    val contentHash = sha256("$notifId:$sender:$subject:${normalizedDate ?: ""}")
 
                     resultList.add(
                         SakaiNotification(

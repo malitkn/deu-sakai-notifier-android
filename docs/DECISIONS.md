@@ -101,3 +101,12 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
   * *Uygulamayı Gece Tamamen Kapatmak (AlarmScheduler.cancel):* Sabah 05:00'te takibin tekrar başlaması için kullanıcının manuel uygulamayı açması gerekeceğinden elenmiş; sabah 05:00'e otomatik tek bir hedef alarm kurma yöntemi seçilmiştir.
 * **Etkilenen Kapsam:** `SecurePreferencesManager.kt`, `AlarmScheduler.kt`, `AlarmReceiver.kt`, `SakaiNotificationWorker.kt`, `MainScreen.kt`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`.
 
+### [DEC-014] Çok Formatlı Webmail Tarih Çözümleyici, Bağıl Zaman Normalizasyonu ve Kronolojik Sıralama Garantisi
+* **Tarih:** 2026-10-18
+* **Karar:** `SakaiNotification.kt` ve `DeuWebmailClient.kt` içerisine Roundcube öğrenci webmaili için çok katmanlı bir tarih çözümleme ve normalizasyon motoru (`parseDateToMillis`, `formatPublishedDate`) entegre edilmiştir. Roundcube AJAX yanıtında yer alan numeric Unix `timestamp`, `mdate`, `internaldate` ve `date_raw` önceliklendirilmiş; salt metin gelen "Bugün 14:30", "Dün 08:15", "14:30" gibi bağıl ifadeler yakalandığı anda mutlak takvim tarihine (`dd.MM.yyyy HH:mm`) dönüştürülmüştür. Türkçe ay isimleri (`18 Eki 14:30`), RFC 2822 ve standart Türk tarih formatları (`dd.MM.yyyy`) tam milisaniye karşılığına çevrilerek `NotificationStateManager` listelemesindeki sıralamanın `0L` varsayılanına düşmesi ve sıralamanın bozulması engellenmiştir.
+* **Gerekçe:** Öğrencilerin bildirim kartlarında günler geçtikten sonra bile bayat "Bugün" ifadesini görmesini engellemek, saatsiz/tarihsiz kart görünümünü düzeltmek ve Sakai duyuruları ile e-postaların zaman çizelgesinde kusursuz kronolojik sırada listelenmesini sağlamak.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *Bağıl Metni Olduğu Gibi Saklamak ("Bugün 14:30"):* Kullanıcı 3 gün sonra uygulamayı açtığında 3 gün önceki maili "Bugün" gelmiş gibi gösterdiği için elenmiştir.
+* **Etkilenen Kapsam:** `SakaiNotification.kt`, `DeuWebmailClient.kt`, `NotificationStateManager.kt`, `MainScreen.kt`, `docs/DECISIONS.md`.
+
+
