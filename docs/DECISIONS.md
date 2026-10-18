@@ -91,3 +91,13 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
 * **Karar:** Ana ekranın en üstüne arka plan servisinin çalışıp çalışmadığını, son başarılı kontrol saatini ve bir sonraki tahmini kontrol zamanını gösteren canlı durum kartı eklenmiştir. Sakai duyurularının gövde açıklaması hiçbir kırpılma olmaksızın tam metin olarak saklanmakta; Android sistem bildirimlerinde `BigTextStyle` ile sistemin izin verdiği maksimum metin genişliği kullanılmakta ve uygulama arayüzünde uzun duyurular için genişletilebilir ("Daha Fazla Göster") kart yapısı ile varsayılan portal linki fallback'i sunulmaktadır.
 * **Gerekçe:** Öğrencilerin arka plan yoklamasının aktifliğini teyit edebilmesi, uzun duyuruların kesilmeden bildirim çekmecesinde ve uygulama içinde baştan sona okunabilmesi, duyuru bağlantısı boş gelse dahi tek dokunuşla DEU Sakai portalına erişilebilmesi.
 * **Etkilenen Kapsam:** `SakaiNotification.kt`, `SakaiParser.kt`, `NotificationHelper.kt`, `MainScreen.kt`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`.
+
+### [DEC-013] Gece Sessizliği ve Derin Uyku Pil Tasarrufu (00:00 - 05:00)
+* **Tarih:** 2026-10-18
+* **Karar:** Gece saat 00:00 - 05:00 arasında DEU Sakai ve Webmail sistemlerinde yeni duyuru ve e-posta akışının durması sebebiyle, arka plan periyodik kontrol mekanizması bu saat aralığında geçici olarak uyutulacaktır. `AlarmScheduler` bir sonraki alarmı doğrudan sabah saat 05:00:00'a kurarak telefonun gece boyunca Doze (derin uyku) modunda kalmasını sağlar; `AlarmReceiver` ve `SakaiNotificationWorker` ise gece saatlerinde tetiklense dahi hiçbir ağ isteği veya WakeLock tutmadan işlemi atlar. Kullanıcıya bu özelliği kapatabilmesi için arayüzde bir tercih anahtarı (`isNightQuietHoursEnabled`, varsayılan: açık) sunulmuştur.
+* **Gerekçe:** Öğrencinin gece uykusundayken telefonunun her 20 dakikada bir CPU ve Wi-Fi/Hücresel radyo uyandırarak pil ve mobil veri tüketmesini önlemek; üniversite sunucularına gereksiz gece istekleri göndermeyerek sunucu kaynaklarını korumak.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *Tüm Gece Boyunca Normal 20 Dakikalık Taramaya Devam Etmek:* Gece 00:00 - 05:00 arasında akademik duyuru yayınlanma ihtimali neredeyse sıfır olduğundan bataryayı ve sistemi boş yere yorduğu için elenmiştir.
+  * *Uygulamayı Gece Tamamen Kapatmak (AlarmScheduler.cancel):* Sabah 05:00'te takibin tekrar başlaması için kullanıcının manuel uygulamayı açması gerekeceğinden elenmiş; sabah 05:00'e otomatik tek bir hedef alarm kurma yöntemi seçilmiştir.
+* **Etkilenen Kapsam:** `SecurePreferencesManager.kt`, `AlarmScheduler.kt`, `AlarmReceiver.kt`, `SakaiNotificationWorker.kt`, `MainScreen.kt`, `docs/ARCHITECTURE.md`, `docs/DECISIONS.md`.
+
