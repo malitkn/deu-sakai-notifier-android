@@ -93,9 +93,18 @@ fun DebisLoginDialog(
                 OutlinedTextField(
                     value = studentNo,
                     onValueChange = { studentNo = it.trim() },
-                    label = { Text("Öğrenci Numarası") },
+                    label = { Text("Kullanıcı Adı veya Öğrenci No") },
+                    placeholder = { Text("örn. tekin.muhammetali veya 2025282042") },
+                    trailingIcon = {
+                        Text(
+                            text = "@ogr.deu.edu.tr",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(end = 12.dp)
+                        )
+                    },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                     modifier = Modifier.fillMaxWidth()
                 )
 
@@ -165,9 +174,11 @@ fun DebisLoginDialog(
 
                 OutlinedTextField(
                     value = captchaInput,
-                    onValueChange = { captchaInput = it.trim() },
-                    label = { Text("Resimdeki Kodu Giriniz") },
+                    onValueChange = { captchaInput = it.trim().take(6) },
+                    label = { Text("Resimdeki Doğrulama Kodu (ctoken)") },
+                    placeholder = { Text("6 karakter") },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                     modifier = Modifier.fillMaxWidth()
                 )
 

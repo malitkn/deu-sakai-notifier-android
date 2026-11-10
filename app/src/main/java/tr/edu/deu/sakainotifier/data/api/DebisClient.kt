@@ -58,9 +58,9 @@ class DebisClient(
             // Determine captcha image URL
             val matcher = CAPTCHA_SRC_REGEX.matcher(responseHtml)
             val relativeCaptchaPath = if (matcher.find()) {
-                matcher.group(1) ?: "captcha.php"
+                matcher.group(1) ?: "captcha2.php"
             } else {
-                "captcha.php"
+                "captcha2.php"
             }
 
             val fullCaptchaUrl = if (relativeCaptchaPath.startsWith("http")) {
@@ -100,19 +100,37 @@ class DebisClient(
 
     /**
      * Submits login credentials with human-entered CAPTCHA code.
+     * DEBİS form fields:
+     * - username: student username or student number (e.g. tekin.muhammetali or 2025282042)
+     * - emailHost: ogr.deu.edu.tr (students) or deu.edu.tr (staff)
+     * - password: user password
+     * - ctoken: CAPTCHA verification code (6 chars)
      */
     suspend fun login(
         username: String,
         password: String,
         captchaCode: String,
-        sessionCookie: String
+        sessionCookie: String,
+        emailHost: String = "ogr.deu.edu.tr"
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
+            val cleanUsername = if (username.contains("@")) {
+                username.substringBefore("@").trim()
+            } else {
+                username.trim()
+            }
+            val resolvedHost = if (username.contains("@")) {
+                val hostPart = username.substringAfter("@").trim()
+                if (hostPart.isNotBlank()) hostPart else emailHost
+            } else {
+                emailHost
+            }
+
             val formBody = FormBody.Builder()
-                .add("username", username)
+                .add("username", cleanUsername)
+                .add("emailHost", resolvedHost)
                 .add("password", password)
-                .add("guvenlik_kod", captchaCode)
-                .add("login", "Giriş")
+                .add("ctoken", captchaCode.trim())
                 .build()
 
             val request = Request.Builder()
@@ -120,36 +138,40 @@ class DebisClient(
                 .post(formBody)
                 .header("Cookie", sessionCookie)
                 .header("Referer", "$baseUrl/debis.php")
-                .header("User-Agent", "Mozilla/5.0 (Android; Mobile; rv:125.0) Gecko/125.0 Firefox/125.0")
+                .header("Origin", baseUrl)
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
                 .build()
 
             val response = client.newCall(request).execute()
             val responseBody = response.body?.string() ?: ""
+            val finalUrl = response.request.url.toString()
 
-            // Check if login failed (e.g. invalid captcha or credentials)
-            if (responseBody.contains("Güvenlik kodu hatalı", ignoreCase = true) ||
-                responseBody.contains("kod yanlış", ignoreCase = true) ||
-                responseBody.contains("güvenlik kodunu", ignoreCase = true)
-            ) {
-                return@withContext Result.failure(IllegalArgumentException("Güvenlik kodu hatalı girildi. Lütfen tekrar deneyin."))
+            // Check if captcha failed (DEBİS 302 redirects to debis.php?gk=1 or contains error text)
+            val isCaptchaError = finalUrl.contains("gk=1") ||
+                response.priorResponse?.header("Location")?.contains("gk=1") == true ||
+                responseBody.contains("Güvenlik kodunu hatalı", ignoreCase = true) ||
+                responseBody.contains("Güvenlik kodu hatalı", ignoreCase = true) ||
+                responseBody.contains("kod yanlış", ignoreCase = true)
+
+            if (isCaptchaError) {
+                return@withContext Result.failure(IllegalArgumentException("Güvenlik kodu hatalı girildi (gk=1). Lütfen yeni kodu giriniz."))
             }
 
             if (responseBody.contains("Kullanıcı adı veya şifre hatalı", ignoreCase = true) ||
                 responseBody.contains("hatalı giriş", ignoreCase = true) ||
                 responseBody.contains("şifreniz hatalı", ignoreCase = true)
             ) {
-                return@withContext Result.failure(IllegalArgumentException("Öğrenci numarası veya şifre hatalı."))
+                return@withContext Result.failure(IllegalArgumentException("Kullanıcı adı veya şifre hatalı."))
             }
 
-            // Guard against silent login failure where DEBİS re-renders the login form
-            val stillOnLoginForm = responseBody.contains("name=\"guvenlik_kod\"", ignoreCase = true) ||
-                responseBody.contains("name='guvenlik_kod'", ignoreCase = true) ||
-                (responseBody.contains("name=\"password\"", ignoreCase = true) &&
-                    !responseBody.contains("Ogrenci", ignoreCase = true))
+            // Guard against remaining on login page without authenticating
+            val stillOnLoginForm = finalUrl.endsWith("debis.php") ||
+                responseBody.contains("name='ctoken'", ignoreCase = true) ||
+                responseBody.contains("name=\"ctoken\"", ignoreCase = true)
 
             if (stillOnLoginForm) {
                 return@withContext Result.failure(
-                    IllegalArgumentException("Giriş doğrulanamadı. Öğrenci numaranızı, şifrenizi ve güvenlik kodunu kontrol edip tekrar deneyin.")
+                    IllegalArgumentException("Giriş doğrulanamadı. Kullanıcı adı, şifre veya güvenlik kodunu kontrol edip tekrar deneyin.")
                 )
             }
 
