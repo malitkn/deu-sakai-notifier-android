@@ -6,8 +6,11 @@ import androidx.work.WorkerParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import tr.edu.deu.sakainotifier.data.api.DebisClient
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
+import tr.edu.deu.sakainotifier.data.model.CourseGrade
+import tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
 import tr.edu.deu.sakainotifier.notification.NotificationHelper
@@ -19,8 +22,10 @@ class SakaiNotificationWorker(
 
     private val securePrefs = SecurePreferencesManager(context)
     private val stateManager = NotificationStateManager(context)
+    private val gradeStateManager = DebisGradeStateManager(context)
     private val apiClient = SakaiApiClient()
     private val webmailClient = DeuWebmailClient()
+    private val debisClient = DebisClient()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val checkSakai = securePrefs.isMonitoringActive
@@ -102,6 +107,54 @@ class SakaiNotificationWorker(
                     } else {
                         // Mail server outage should not break Sakai notifications.
                         // It will simply re-attempt on the next regular 20-min cycle.
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+
+            // 3. Poll DEBİS Grades & Send Keep-Alive (if session cookie exists)
+            val debisCookie = gradeStateManager.getSessionCookie(account.username)
+            if (gradeStateManager.isGradeMonitoringActive() && !debisCookie.isNullOrBlank()) {
+                try {
+                    // Send lightweight keep-alive heartbeat to reset PHP session idle timer
+                    debisClient.sendKeepAlive(debisCookie)
+
+                    val coursesResult = debisClient.fetchCourseOptions(debisCookie)
+                    if (coursesResult.isSuccess) {
+                        val courseOptions = coursesResult.getOrDefault(emptyList())
+                        val freshGrades = mutableListOf<CourseGrade>()
+
+                        for (option in courseOptions) {
+                            val detailResult = debisClient.fetchCourseGradeDetails(
+                                sessionCookie = debisCookie,
+                                courseOption = option,
+                                studentNo = account.username.substringBefore("@")
+                            )
+                            if (detailResult.isSuccess) {
+                                freshGrades.add(detailResult.getOrThrow())
+                            }
+                        }
+
+                        if (freshGrades.isNotEmpty()) {
+                            if (gradeStateManager.isFirstGradeBoot(account.username)) {
+                                // Silent bootstrap: save initial snapshot without firing alerts
+                                gradeStateManager.saveGradeSnapshot(account.username, freshGrades)
+                                gradeStateManager.setFirstGradeBootCompleted(account.username)
+                            } else {
+                                // Diff against local snapshot and notify for new/changed grades
+                                val differences = gradeStateManager.detectDifferences(account.username, freshGrades)
+                                for (diff in differences) {
+                                    NotificationHelper.showGradeNotification(context, diff, account.username)
+                                }
+                            }
+                        }
+                    } else {
+                        val ex = coursesResult.exceptionOrNull()
+                        if (ex is IllegalStateException) {
+                            // Session expired: clear invalid cookie so user is prompted to refresh
+                            gradeStateManager.saveSessionCookie(account.username, null)
+                        }
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()

@@ -40,6 +40,7 @@ import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
 import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
 import tr.edu.deu.sakainotifier.data.model.SakaiAccount
 import tr.edu.deu.sakainotifier.data.model.SakaiNotification
+import tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
 import tr.edu.deu.sakainotifier.data.updater.AppUpdateInfo
@@ -77,6 +78,9 @@ fun MainScreen(
 
     var isMonitoringActive by remember { mutableStateOf(securePrefs.isMonitoringActive) }
     var isMailMonitoringActive by remember { mutableStateOf(securePrefs.isMailMonitoringActive) }
+    val debisGradeStateManager = remember { DebisGradeStateManager(context) }
+    var isGradeMonitoringActive by remember { mutableStateOf(debisGradeStateManager.isGradeMonitoringActive()) }
+    var showDebisLoginDialog by remember { mutableStateOf(false) }
     var isNightQuietHoursEnabled by remember { mutableStateOf(securePrefs.isNightQuietHoursEnabled) }
     var selectedInterval by remember { mutableStateOf(securePrefs.pollIntervalMinutes) }
     var lastCheckTime by remember { mutableStateOf(securePrefs.lastCheckTimestamp) }
@@ -550,6 +554,76 @@ fun MainScreen(
                                         WorkScheduler.cancel(context)
                                     }
                                     Toast.makeText(context, if (active) "Öğrenci e-postası takibi başlatıldı." else "Öğrenci e-postası takibi durduruldu.", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+
+                        // DEBİS Sınav Notları Takibi Toggle & Giriş Butonu
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                        val primaryUser = registeredAccounts.firstOrNull()?.username ?: ""
+                        val hasDebisSession = debisGradeStateManager.getSessionCookie(primaryUser) != null
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = "📊 DEBİS Sınav Notları",
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontSize = 14.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (hasDebisSession) {
+                                        Surface(
+                                            color = Color(0xFFE8F5E9),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Bağlı",
+                                                color = Color(0xFF2E7D32),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                                Text(
+                                    text = if (hasDebisSession) "Vize, final ve harf notları arka planda taranıyor." else "Not bildirimleri için DEBİS hesabınızı bağlayın.",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
+                                TextButton(
+                                    onClick = { showDebisLoginDialog = true },
+                                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (hasDebisSession) "🔄 Oturumu Yenile" else "🔑 Giriş Yap (CAPTCHA)",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = isGradeMonitoringActive,
+                                onCheckedChange = { active ->
+                                    isGradeMonitoringActive = active
+                                    debisGradeStateManager.setGradeMonitoringActive(active)
+                                    if (active && !hasDebisSession) {
+                                        showDebisLoginDialog = true
+                                    }
+                                    Toast.makeText(
+                                        context,
+                                        if (active) "DEBİS not takibi aktif edildi." else "DEBİS not takibi durduruldu.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             )
                         }
@@ -1729,6 +1803,19 @@ fun MainScreen(
                 TextButton(onClick = { showClearDialog = false }) {
                     Text("İptal")
                 }
+            }
+        )
+    }
+
+    if (showDebisLoginDialog) {
+        val activeStudentNo = registeredAccounts.firstOrNull()?.username ?: ""
+        DebisLoginDialog(
+            initialStudentNumber = activeStudentNo,
+            onDismiss = { showDebisLoginDialog = false },
+            onSuccess = { cookie, studentNo ->
+                debisGradeStateManager.saveSessionCookie(studentNo, cookie)
+                Toast.makeText(context, "DEBİS Bağlandı! $studentNo için not takibi aktif.", Toast.LENGTH_SHORT).show()
+                showDebisLoginDialog = false
             }
         )
     }

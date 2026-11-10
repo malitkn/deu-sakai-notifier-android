@@ -23,6 +23,10 @@ object NotificationHelper {
     private const val CHANNEL_NAME_MAIL = "DEU Öğrenci E-postası"
     private const val CHANNEL_DESC_MAIL = "DEU öğrenci e-posta kutusuna gelen yeni iletiler için bildirimler"
 
+    const val CHANNEL_ID_GRADES = "deu_debis_grades"
+    private const val CHANNEL_NAME_GRADES = "DEU DEBİS Sınav Notları"
+    private const val CHANNEL_DESC_GRADES = "DEBİS üzerinde açıklanan yeni vize, final, bütünleme ve harf notu bildirimleri"
+
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager =
@@ -49,6 +53,17 @@ object NotificationHelper {
                 enableLights(true)
             }
             notificationManager.createNotificationChannel(mailChannel)
+
+            val gradesChannel = NotificationChannel(
+                CHANNEL_ID_GRADES,
+                CHANNEL_NAME_GRADES,
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = CHANNEL_DESC_GRADES
+                enableVibration(true)
+                enableLights(true)
+            }
+            notificationManager.createNotificationChannel(gradesChannel)
         }
     }
 
@@ -227,6 +242,59 @@ object NotificationHelper {
             } catch (e: SecurityException) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    fun showGradeNotification(
+        context: Context,
+        diff: tr.edu.deu.sakainotifier.data.model.GradeDifference,
+        accountUsername: String? = null
+    ) {
+        createNotificationChannel(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            "grade_${diff.courseCode}_${diff.evaluationType}".hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val accountPrefix = accountUsername?.substringBefore("@")?.takeIf { it.isNotBlank() }
+        val title = if (accountPrefix != null) {
+            "🎓 [$accountPrefix] Yeni Not: ${diff.courseName}"
+        } else {
+            "🎓 Yeni Not: ${diff.courseName}"
+        }
+
+        val body = buildString {
+            append("${diff.evaluationType}: ${diff.newValue}")
+            if (!diff.letterGrade.isNullOrBlank()) {
+                append(" | Harf Notu: ${diff.letterGrade}")
+            }
+            if (!diff.status.isNullOrBlank()) {
+                val statusText = if (diff.status == "B") " (Başarılı)" else " (Kaldı)"
+                append(statusText)
+            }
+        }
+
+        val builder = NotificationCompat.Builder(context, CHANNEL_ID_GRADES)
+            .setSmallIcon(android.R.drawable.ic_menu_agenda)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+
+        try {
+            val notificationManager = NotificationManagerCompat.from(context)
+            val notificationId = "grade_${diff.courseCode}_${diff.evaluationType}_$accountPrefix".hashCode()
+            notificationManager.notify(notificationId, builder.build())
+        } catch (e: SecurityException) {
+            e.printStackTrace()
         }
     }
 }

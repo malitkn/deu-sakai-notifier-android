@@ -109,4 +109,18 @@ Bu belge, **DEU Sakai Notifier Android** (`deu-sakai-notifier-android`) projesin
   * *Bağıl Metni Olduğu Gibi Saklamak ("Bugün 14:30"):* Kullanıcı 3 gün sonra uygulamayı açtığında 3 gün önceki maili "Bugün" gelmiş gibi gösterdiği için elenmiştir.
 * **Etkilenen Kapsam:** `SakaiNotification.kt`, `DeuWebmailClient.kt`, `NotificationStateManager.kt`, `MainScreen.kt`, `docs/DECISIONS.md`.
 
+### [DEC-015] DEBİS Not Takip Modülü, Native CAPTCHA Girişi, Keep-Alive ve Sessiz Başlangıç
+* **Tarih:** 2026-11-10
+* **Karar:** DEÜ Bilgi Sistemi (DEBİS) üzerindeki vize, final, bütünleme ve harf notlarını (`ders=B_BA+_1_9634_3_46_&ogretim_donemi_id=324...`) arka planda otomatik takip eden 3. veri kaynağı modülü entegre edilmiştir:
+  1. **Native CAPTCHA Görseli ve İnsan Girişi:** Güvenlik ve anti-bot sınırlarına %100 uyum sağlamak için CAPTCHA görseli sunucudan indirilip yerel Jetpack Compose ekranında (`DebisLoginDialog`) öğrenciye doğrudan gösterilir; güvenlik kodu kullanıcı tarafından kendi gözüyle görülüp klavyeyle girilir.
+  2. **Session / CookieJar Devamlılığı:** CAPTCHA görselini indiren HTTP oturumu ile giriş formunu gönderen oturum aynı `PHPSESSID` çerezini paylaşır.
+  3. **Oturum Canlı Tutucu (Keep-Alive Heartbeat):** DEBİS'in kısa boşta kalma süresini (idle timeout) aşmak amacıyla arka plan servisi periyodik hafif GET isteği göndererek PHP oturumunu düşürmeden uyanık tutar.
+  4. **Sessiz Başlangıç (Silent Bootstrap) & Durum Karşılaştırma (Diffing):** İlk girişte mevcut tüm notlar yerel JSON snapshot'ına kaydedilir ve eski notlar için bildirim gönderilmez. Sonraki periyodik taramalarda sadece yeni açıklanan sınav notları (Vize, Final, Harf Notu) tespit edilerek Android `NotificationHelper` (`CHANNEL_ID_GRADES`) üzerinden yüksek öncelikli bildirim fırlatılır.
+* **Gerekçe:** Öğrencilerin sınav dönemlerinde sisteme sürekli elle giriş yapma zorunluluğunu ortadan kaldırmak, anlık not bildirimlerini güvenli, pil dostu ve meşru mimariyle sunmak.
+* **Değerlendirilen Alternatifler & Seçilmeme Sebepleri:**
+  * *Otomatik CAPTCHA Kırma / OCR Botu:* Güvenlik yönergelerini, sistem sınırlarını ve üniversite kurallarını ihlal edeceği için elenmiştir.
+  * *Hantal WebView Tarayıcı:* Ağır bellek tüketimi ve kötü mobil deneyim yerine yerel Jetpack Compose dialog'u tercih edilmiştir.
+* **Etkilenen Kapsam:** `DebisGrade.kt`, `DebisParser.kt`, `DebisClient.kt`, `DebisGradeStateManager.kt`, `DebisLoginDialog.kt`, `NotificationHelper.kt`, `SakaiNotificationWorker.kt`, `MainScreen.kt`, `docs/ARGON_HANDOVER.md`.
+
+
 
