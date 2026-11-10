@@ -32,6 +32,7 @@ import tr.edu.deu.sakainotifier.data.model.DebisCaptchaSession
 @Composable
 fun DebisLoginDialog(
     initialStudentNumber: String = "",
+    initialPassword: String = "",
     debisClient: DebisClient = remember { DebisClient() },
     onDismiss: () -> Unit,
     onSuccess: (sessionCookie: String, studentNo: String) -> Unit
@@ -39,7 +40,7 @@ fun DebisLoginDialog(
     val coroutineScope = rememberCoroutineScope()
 
     var studentNo by remember { mutableStateOf(initialStudentNumber.substringBefore("@").trim()) }
-    var password by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf(initialPassword) }
     var captchaInput by remember { mutableStateOf("") }
 
     var captchaSession by remember { mutableStateOf<DebisCaptchaSession?>(null) }

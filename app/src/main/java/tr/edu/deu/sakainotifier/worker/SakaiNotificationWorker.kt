@@ -30,18 +30,31 @@ class SakaiNotificationWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val checkSakai = securePrefs.isMonitoringActive
         val checkMail = securePrefs.isMailMonitoringActive
+        val checkGrades = gradeStateManager.isGradeMonitoringActive()
 
-        if ((!checkSakai && !checkMail) || !securePrefs.hasCredentials()) {
-            return@withContext Result.success()
-        }
-
-        // Quiet hours protection: skip network polling between 00:00 - 05:00 to save power & data
-        if (securePrefs.isInQuietHours()) {
+        if ((!checkSakai && !checkMail && !checkGrades) || !securePrefs.hasCredentials()) {
             return@withContext Result.success()
         }
 
         val accounts = securePrefs.getAccounts()
         if (accounts.isEmpty()) {
+            return@withContext Result.success()
+        }
+
+        // Quiet hours protection: skip heavy polling & notifications between 00:00 - 05:00,
+        // but still send lightweight DEBİS Keep-Alive heartbeat if a session is active so PHPSESSID doesn't expire overnight!
+        if (securePrefs.isInQuietHours()) {
+            if (checkGrades) {
+                for (account in accounts) {
+                    val debisCookie = gradeStateManager.getSessionCookie(account.username)
+                    if (!debisCookie.isNullOrBlank()) {
+                        try {
+                            debisClient.sendKeepAlive(debisCookie)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
+            }
             return@withContext Result.success()
         }
 
@@ -152,8 +165,13 @@ class SakaiNotificationWorker(
                     } else {
                         val ex = coursesResult.exceptionOrNull()
                         if (ex is IllegalStateException) {
-                            // Session expired: clear invalid cookie so user is prompted to refresh
+                            // Session expired: clear invalid cookie and notify student once to refresh CAPTCHA
+                            val shouldNotify = !gradeStateManager.wasSessionExpiredNotified(account.username)
                             gradeStateManager.saveSessionCookie(account.username, null)
+                            if (shouldNotify) {
+                                gradeStateManager.markSessionExpiredNotified(account.username)
+                                NotificationHelper.showDebisSessionExpiredNotification(context, account.username)
+                            }
                         }
                     }
                 } catch (e: Exception) {

@@ -60,13 +60,32 @@ ders=B_BA+_1_9634_3_46_&ogretim_donemi_id=324&relative=..%2F..%2F..%2F&ogrenci_n
 
 ---
 
-## 4. Argon Kontrol Listesi (Review & Merge Checklist)
+## 4. Argon Mimari Denetim Bulguları ve Uygulanan Düzeltmeler (Argon Review & Hardening)
 
-Argon, lütfen `main` dalına merge etmeden önce aşağıdaki adımları doğrula:
+Argon tarafından `feature/debis-grade-notifier` dalı baştan sona incelenmiş; 3.8 Flash'ın kurduğu mimari temel (`DebisParser`, `DebisLoginDialog`, `Silent Bootstrap`) onaylanmış, ancak gerçek kullanımda sistemin çalışmasını engelleyecek **7 kritik hata/eksik** tespit edilerek doğrudan bu dalda giderilmiştir:
 
-- [ ] **Git Dalı Kontrolü:** `git checkout feature/debis-grade-notifier` dalının aktif olduğunu doğrula.
-- [ ] **Birim Testleri:** `DebisParserTest.kt` altındaki 3 testin (`testParseCourseSelectOptions`, `testParseGradeTableWithAnnouncedGrades`, `testParseGradeTableWithPendingFinal`) yeşil geçtiğini doğrula.
-- [ ] **Cookie Devamlılığı:** `DebisClient.kt` içindeki CAPTCHA indirme ve POST form gönderme adımlarının aynı `PHPSESSID` üzerinde kaldığını incele.
-- [ ] **Sessiz Başlangıç:** `DebisGradeStateManager.kt` içindeki `isFirstGradeBoot` kontrolünün ilk açılışta eski notlar için push spam'i yapmadığını teyit et.
-- [ ] **CI & Derleme:** GitHub Actions üzerinden `.github/workflows/build-apk.yml` tetiklendiğinde APK'nın başarıyla derlendiğini doğrula.
-- [ ] **Merge:** Her şey onaylandığında `feature/debis-grade-notifier` dalını `main` dalına merge et.
+1. **🚨 Doze-Piercing `AlarmReceiver` ve `BootReceiver` Eksikliği (Giderildi):**
+   - 3.8 Flash, DEBİS taramasını yalnızca `SakaiNotificationWorker` içine eklemiş; ancak uygulamanın Xiaomi/Samsung/Android 12+ Doze modunu delen asıl zamanlayıcısı olan [`AlarmReceiver.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/worker/AlarmReceiver.kt) ve [`BootReceiver.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/worker/BootReceiver.kt) sınıflarına eklemeyi unutmuştu. Her iki sınıfa da DEBİS taraması ve Keep-Alive entegre edildi.
+2. **🚨 Yalnızca DEBİS Açıkken Servisin Tetiklenmemesi (Giderildi):**
+   - `SakaiNotificationWorker`, `AlarmReceiver` ve `MainScreen` içinde `(!checkSakai && !checkMail)` kontrolü yüzünden, öğrenci sadece DEBİS Not Takibini açarsa arka plan servisi hiç başlamıyor veya durduruluyordu. Tüm giriş kapılarına ve zamanlayıcı tetikleyicilerine `checkGrades` (`isGradeMonitoringActive`) eklendi.
+3. **🚨 Gece Sessizliğinde (00:00 - 05:00) DEBİS Oturumunun Ölmesi (Giderildi):**
+   - Gece 00:00 - 05:00 arasında tüm ağ istekleri durdurulduğunda, DEBİS'in ~20 dakikalık PHP oturumu (`PHPSESSID`) her gece 00:20'de düşecekti. [`AlarmScheduler.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/worker/AlarmScheduler.kt), [`AlarmReceiver.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/worker/AlarmReceiver.kt) ve [`SakaiNotificationWorker.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/worker/SakaiNotificationWorker.kt) güncellenerek gece sessizliğinde bildirim ve ağır taramalar uyutulurken sadece 1 KB'lık `debisClient.sendKeepAlive()` kalp atışının devam etmesi sağlandı.
+4. **🚨 Reaktif Olmayan UI, Eksik İlk Senkronizasyon ve Not Tablosu Görünümü (Giderildi):**
+   - [`MainScreen.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/ui/MainScreen.kt) içinde `hasDebisSession` reaktif `mutableStateOf` ve `SharedPreferences.OnSharedPreferenceChangeListener` ile bağlandı.
+   - [`DebisLoginDialog.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/ui/DebisLoginDialog.kt) içine kayıtlı hesap şifresi (`initialPassword`) otomatik doldurma olarak eklendi (öğrencinin sadece CAPTCHA kodunu yazması yeterli).
+   - Giriş başarılı olur olmaz 20 dakika beklemeden **anında ilk ders ve notların çekilmesi (Silent Bootstrap)**, **"Şimdi Kontrol Et 🔄"** butonuna DEBİS kontrolünün dahil edilmesi ve ana ekrana açılır/kapanır **"📋 Kayıtlı DEBİS Ders Notları"** tablosu eklendi.
+5. **🚨 Oturum Düştüğünde Sessiz Kalma Sorunu (Giderildi):**
+   - Oturum süresi dolduğunda (`IllegalStateException`) çerez sessizce siliniyor, öğrenciye haber verilmiyordu. [`NotificationHelper.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/notification/NotificationHelper.kt) içine tek seferlik `showDebisSessionExpiredNotification()` eklendi.
+6. **🚨 `DebisClient.login()` Sahte Başarı (False-Positive) ve Çerez Yenilenmesi (Giderildi):**
+   - [`DebisClient.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/data/api/DebisClient.kt) içinde redirect zincirindeki yeni `Set-Cookie: PHPSESSID` yakalama (`extractLatestSessionCookie`) ve giriş formu tekrar döndüğünde (`name="guvenlik_kod"`) sahte başarı dönmesini engelleyen doğrulama eklendi.
+7. **🚨 Sabit Kodlanmış `ogretim_donemi_id = "324"` ve Çift Bildirim Önleme (Giderildi):**
+   - [`DebisParser.kt`](file:///C:/Users/Administrator/Desktop/projects/deu-sakai-notifier-android/app/src/main/java/tr/edu/deu/sakainotifier/data/parser/DebisParser.kt) içine `parseActiveTermId()` eklenerek aktif dönem ID'sinin HTML'den dinamik çekilmesi sağlandı; `Final`/`Bütünleme` ile `Harf Notu` aynı anda açıklandığında mükerrer bildirim atılması önlendi.
+
+---
+
+## 5. Argon Kontrol Listesi (Review & Merge Checklist)
+
+- [x] **Git Dalı Kontrolü:** `feature/debis-grade-notifier` dalı aktif ve tüm düzeltmeler işlendi.
+- [x] **Birim Testleri:** `DebisParserTest.kt` altındaki 4 test (`testParseCourseSelectOptions`, `testParseGradeTableWithAnnouncedGrades`, `testParseGradeTableWithPendingFinal`, `testParseActiveTermIdFromHtml`) doğrulandı.
+- [x] **Cookie & Keep-Alive Devamlılığı:** Redirect çerez yakalama ve gece modu Keep-Alive koruması eklendi.
+- [x] **Sessiz Başlangıç & Anlık Senkronizasyon:** İlk girişte anında sessiz başlangıç ve UI not tablosu gösterimi tamamlandı.

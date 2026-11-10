@@ -30,7 +30,12 @@ object AlarmScheduler {
         var triggerAtMillis = System.currentTimeMillis() + (validatedInterval * 60 * 1000L)
 
         val securePrefs = SecurePreferencesManager(context)
-        if (securePrefs.isInQuietHours(triggerAtMillis)) {
+        val gradeStateManager = tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager(context)
+        val hasActiveDebisSession = gradeStateManager.isGradeMonitoringActive() &&
+            securePrefs.getAccounts().any { !gradeStateManager.getSessionCookie(it.username).isNullOrBlank() }
+
+        // Only defer alarm to 05:00 if there is NO active DEBİS session that needs 20-min Keep-Alive heartbeats
+        if (securePrefs.isInQuietHours(triggerAtMillis) && !hasActiveDebisSession) {
             triggerAtMillis = securePrefs.getNextQuietHoursEndMillis(triggerAtMillis)
         }
 

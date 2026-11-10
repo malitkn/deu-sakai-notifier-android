@@ -14,7 +14,8 @@ data class DebisCourseOption(
     val courseCode: String,        // e.g. "9634"
     val credit: String,            // e.g. "3"
     val mevcut: String,            // e.g. "46"
-    val courseName: String         // e.g. "Türk Dili II"
+    val courseName: String,        // e.g. "Türk Dili II"
+    val termId: String = "324"     // Active ogretim_donemi_id extracted from page (fallback "324")
 )
 
 /**

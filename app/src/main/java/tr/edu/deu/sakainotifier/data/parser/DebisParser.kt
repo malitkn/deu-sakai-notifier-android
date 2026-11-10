@@ -15,6 +15,21 @@ object DebisParser {
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL
     )
 
+    private val TERM_SELECT_REGEX = Pattern.compile(
+        """<select[^>]*name=["']ogretim_donemi_id["'][^>]*>(.*?)</select>""",
+        Pattern.CASE_INSENSITIVE or Pattern.DOTALL
+    )
+
+    private val SELECTED_TERM_OPTION_REGEX = Pattern.compile(
+        """<option[^>]*value=["'](\d+)["'][^>]*selected[^>]*>|<option[^>]*selected[^>]*value=["'](\d+)["'][^>]*>""",
+        Pattern.CASE_INSENSITIVE or Pattern.DOTALL
+    )
+
+    private val ANY_TERM_OPTION_REGEX = Pattern.compile(
+        """<option[^>]*value=["'](\d{2,4})["'][^>]*>""",
+        Pattern.CASE_INSENSITIVE or Pattern.DOTALL
+    )
+
     private val ROW_REGEX = Pattern.compile(
         """<tr[^>]*>(.*?)</tr>""",
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL
@@ -26,10 +41,36 @@ object DebisParser {
     )
 
     /**
+     * Extracts the active semester ID (`ogretim_donemi_id`) from the DEBİS grade page HTML.
+     * Defaults to "324" if not explicitly present in the markup.
+     */
+    fun parseActiveTermId(html: String): String {
+        val selectMatcher = TERM_SELECT_REGEX.matcher(html)
+        val scopeHtml = if (selectMatcher.find()) selectMatcher.group(1) ?: html else html
+
+        val selectedMatcher = SELECTED_TERM_OPTION_REGEX.matcher(scopeHtml)
+        if (selectedMatcher.find()) {
+            val id = selectedMatcher.group(1) ?: selectedMatcher.group(2)
+            if (!id.isNullOrBlank()) return id.trim()
+        }
+
+        if (selectMatcher.reset().find()) {
+            val anyMatcher = ANY_TERM_OPTION_REGEX.matcher(scopeHtml)
+            if (anyMatcher.find()) {
+                val id = anyMatcher.group(1)
+                if (!id.isNullOrBlank()) return id.trim()
+            }
+        }
+
+        return "324"
+    }
+
+    /**
      * Extracts courses from `<select name="ders">` dropdown.
      * Values match `B_BA+_1_9634_3_46_` pattern.
      */
     fun parseCourseSelectOptions(html: String): List<DebisCourseOption> {
+        val activeTermId = parseActiveTermId(html)
         val results = mutableListOf<DebisCourseOption>()
         val matcher = OPTION_REGEX.matcher(html)
 
@@ -64,7 +105,8 @@ object DebisParser {
                         courseCode = courseCode,
                         credit = credit,
                         mevcut = mevcut,
-                        courseName = cleanName
+                        courseName = cleanName,
+                        termId = activeTermId
                     )
                 )
             }

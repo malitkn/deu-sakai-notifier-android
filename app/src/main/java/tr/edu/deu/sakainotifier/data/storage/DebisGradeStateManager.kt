@@ -19,10 +19,11 @@ class DebisGradeStateManager(context: Context) {
 
     companion object {
         private const val PREFS_NAME = "deu_debis_grade_state"
-        private const val KEY_IS_FIRST_GRADE_BOOT = "key_is_first_grade_boot"
-        private const val KEY_GRADE_SNAPSHOT = "key_grade_snapshot"
-        private const val KEY_DEBIS_COOKIE = "key_debis_cookie"
-        private const val KEY_GRADE_MONITORING_ACTIVE = "key_grade_monitoring_active"
+        const val KEY_IS_FIRST_GRADE_BOOT = "key_is_first_grade_boot"
+        const val KEY_GRADE_SNAPSHOT = "key_grade_snapshot"
+        const val KEY_DEBIS_COOKIE = "key_debis_cookie"
+        const val KEY_GRADE_MONITORING_ACTIVE = "key_grade_monitoring_active"
+        private const val KEY_SESSION_EXPIRED_NOTIFIED = "key_debis_session_expired_notified"
     }
 
     private fun getAccountKey(baseKey: String, username: String): String {
@@ -30,8 +31,16 @@ class DebisGradeStateManager(context: Context) {
         return if (sanitized.isNotEmpty()) "${baseKey}_$sanitized" else baseKey
     }
 
+    fun registerChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     fun isGradeMonitoringActive(): Boolean {
-        return prefs.getBoolean(KEY_GRADE_MONITORING_ACTIVE, true)
+        return prefs.getBoolean(KEY_GRADE_MONITORING_ACTIVE, false)
     }
 
     fun setGradeMonitoringActive(active: Boolean) {
@@ -45,11 +54,25 @@ class DebisGradeStateManager(context: Context) {
 
     fun saveSessionCookie(username: String, cookie: String?) {
         val key = getAccountKey(KEY_DEBIS_COOKIE, username)
-        if (cookie != null) {
-            prefs.edit().putString(key, cookie).apply()
+        val expiredKey = getAccountKey(KEY_SESSION_EXPIRED_NOTIFIED, username)
+        if (!cookie.isNullOrBlank()) {
+            prefs.edit()
+                .putString(key, cookie)
+                .putBoolean(expiredKey, false)
+                .apply()
         } else {
             prefs.edit().remove(key).apply()
         }
+    }
+
+    fun wasSessionExpiredNotified(username: String): Boolean {
+        val key = getAccountKey(KEY_SESSION_EXPIRED_NOTIFIED, username)
+        return prefs.getBoolean(key, false)
+    }
+
+    fun markSessionExpiredNotified(username: String) {
+        val key = getAccountKey(KEY_SESSION_EXPIRED_NOTIFIED, username)
+        prefs.edit().putBoolean(key, true).apply()
     }
 
     fun isFirstGradeBoot(username: String): Boolean {
@@ -152,8 +175,11 @@ class DebisGradeStateManager(context: Context) {
                 )
             }
 
+            var examDiffTriggeredWithLetter = false
+
             // Check Final announcement
             if (old.final == null && fresh.final != null) {
+                examDiffTriggeredWithLetter = true
                 differences.add(
                     GradeDifference(
                         courseCode = fresh.courseCode,
@@ -166,6 +192,7 @@ class DebisGradeStateManager(context: Context) {
                     )
                 )
             } else if (old.final != null && fresh.final != null && old.final != fresh.final) {
+                examDiffTriggeredWithLetter = true
                 differences.add(
                     GradeDifference(
                         courseCode = fresh.courseCode,
@@ -181,6 +208,7 @@ class DebisGradeStateManager(context: Context) {
 
             // Check Bütünleme announcement
             if (old.butunleme == null && fresh.butunleme != null) {
+                examDiffTriggeredWithLetter = true
                 differences.add(
                     GradeDifference(
                         courseCode = fresh.courseCode,
@@ -192,21 +220,48 @@ class DebisGradeStateManager(context: Context) {
                         status = fresh.status
                     )
                 )
-            }
-
-            // Check Letter Grade (Yarıyıl Sonu Başarı Notu) announcement
-            if (old.letterGrade == null && fresh.letterGrade != null) {
+            } else if (old.butunleme != null && fresh.butunleme != null && old.butunleme != fresh.butunleme) {
+                examDiffTriggeredWithLetter = true
                 differences.add(
                     GradeDifference(
                         courseCode = fresh.courseCode,
                         courseName = fresh.courseName,
-                        evaluationType = "Harf Notu",
-                        oldValue = null,
-                        newValue = fresh.letterGrade,
+                        evaluationType = "Bütünleme (Güncellendi)",
+                        oldValue = old.butunleme,
+                        newValue = fresh.butunleme,
                         letterGrade = fresh.letterGrade,
                         status = fresh.status
                     )
                 )
+            }
+
+            // Check Letter Grade (Yarıyıl Sonu Başarı Notu) announcement or update (only if not already bundled in Final/Büt alert)
+            if (!examDiffTriggeredWithLetter) {
+                if (old.letterGrade == null && fresh.letterGrade != null) {
+                    differences.add(
+                        GradeDifference(
+                            courseCode = fresh.courseCode,
+                            courseName = fresh.courseName,
+                            evaluationType = "Harf Notu",
+                            oldValue = null,
+                            newValue = fresh.letterGrade,
+                            letterGrade = fresh.letterGrade,
+                            status = fresh.status
+                        )
+                    )
+                } else if (old.letterGrade != null && fresh.letterGrade != null && old.letterGrade != fresh.letterGrade) {
+                    differences.add(
+                        GradeDifference(
+                            courseCode = fresh.courseCode,
+                            courseName = fresh.courseName,
+                            evaluationType = "Harf Notu (Güncellendi)",
+                            oldValue = old.letterGrade,
+                            newValue = fresh.letterGrade,
+                            letterGrade = fresh.letterGrade,
+                            status = fresh.status
+                        )
+                    )
+                }
             }
         }
 

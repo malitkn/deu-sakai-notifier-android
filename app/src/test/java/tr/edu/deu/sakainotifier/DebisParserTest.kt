@@ -150,4 +150,22 @@ class DebisParserTest {
         assertNull("Final henüz açıklanmamış olmalı", parsedGrade.final)
         assertNull("Harf notu henüz açıklanmamış olmalı", parsedGrade.letterGrade)
     }
+
+    @Test
+    fun testParseActiveTermIdFromHtml() {
+        val htmlWithSelectedTerm = """
+            <select name="ogretim_donemi_id">
+                <option value="323">2024-2025 Bahar</option>
+                <option value="325" selected>2025-2026 Bahar</option>
+            </select>
+            <select name="ders">
+                <option value="B_BA+_1_9634_3_46_"> - Türk Dili II</option>
+            </select>
+        """.trimIndent()
+
+        assertEquals("325", DebisParser.parseActiveTermId(htmlWithSelectedTerm))
+        val options = DebisParser.parseCourseSelectOptions(htmlWithSelectedTerm)
+        assertEquals(1, options.size)
+        assertEquals("325", options[0].termId)
+    }
 }

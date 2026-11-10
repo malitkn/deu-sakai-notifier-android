@@ -128,22 +128,53 @@ class DebisClient(
 
             // Check if login failed (e.g. invalid captcha or credentials)
             if (responseBody.contains("Güvenlik kodu hatalı", ignoreCase = true) ||
-                responseBody.contains("kod yanlış", ignoreCase = true)
+                responseBody.contains("kod yanlış", ignoreCase = true) ||
+                responseBody.contains("güvenlik kodunu", ignoreCase = true)
             ) {
                 return@withContext Result.failure(IllegalArgumentException("Güvenlik kodu hatalı girildi. Lütfen tekrar deneyin."))
             }
 
             if (responseBody.contains("Kullanıcı adı veya şifre hatalı", ignoreCase = true) ||
-                responseBody.contains("hatalı giriş", ignoreCase = true)
+                responseBody.contains("hatalı giriş", ignoreCase = true) ||
+                responseBody.contains("şifreniz hatalı", ignoreCase = true)
             ) {
                 return@withContext Result.failure(IllegalArgumentException("Öğrenci numarası veya şifre hatalı."))
             }
 
+            // Guard against silent login failure where DEBİS re-renders the login form
+            val stillOnLoginForm = responseBody.contains("name=\"guvenlik_kod\"", ignoreCase = true) ||
+                responseBody.contains("name='guvenlik_kod'", ignoreCase = true) ||
+                (responseBody.contains("name=\"password\"", ignoreCase = true) &&
+                    !responseBody.contains("Ogrenci", ignoreCase = true))
+
+            if (stillOnLoginForm) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("Giriş doğrulanamadı. Öğrenci numaranızı, şifrenizi ve güvenlik kodunu kontrol edip tekrar deneyin.")
+                )
+            }
+
+            // Capture rotated PHPSESSID if server issued a new Set-Cookie during redirect chain
+            val activeCookie = extractLatestSessionCookie(response, sessionCookie)
+
             // Return active authenticated cookie
-            Result.success(sessionCookie)
+            Result.success(activeCookie)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun extractLatestSessionCookie(response: Response, fallbackCookie: String): String {
+        val allCookies = mutableListOf<String>()
+        var current: Response? = response
+        while (current != null) {
+            allCookies.addAll(current.headers("Set-Cookie"))
+            current = current.priorResponse
+        }
+        val latestPhpSessId = allCookies
+            .firstOrNull { it.startsWith("PHPSESSID=", ignoreCase = true) }
+            ?.substringBefore(";")
+            ?.trim()
+        return if (!latestPhpSessId.isNullOrBlank()) latestPhpSessId else fallbackCookie
     }
 
     /**
@@ -204,7 +235,7 @@ class DebisClient(
         sessionCookie: String,
         courseOption: DebisCourseOption,
         studentNo: String,
-        termId: String = "324",
+        termId: String = courseOption.termId.ifBlank { "324" },
         gradeQueryUrl: String = "$baseUrl/Ogrenci/OgrNot/index.php"
     ): Result<CourseGrade> = withContext(Dispatchers.IO) {
         try {
