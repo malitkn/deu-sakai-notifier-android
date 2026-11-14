@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="@raw/globalsign_gcc_r46_ov_tls_ca_2025" />
+            <certificates src="@raw/globalsign_root_r46" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
