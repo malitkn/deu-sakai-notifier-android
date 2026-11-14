@@ -24,8 +24,8 @@ object NotificationHelper {
     private const val CHANNEL_DESC_MAIL = "DEU öğrenci e-posta kutusuna gelen yeni iletiler için bildirimler"
 
     const val CHANNEL_ID_GRADES = "deu_debis_grades"
-    private const val CHANNEL_NAME_GRADES = "DEU DEBİS Sınav Notları"
-    private const val CHANNEL_DESC_GRADES = "DEBİS üzerinde açıklanan yeni vize, final, bütünleme ve harf notu bildirimleri"
+    private const val CHANNEL_NAME_GRADES = "DEU OBS / DEBİS Sınav Notları"
+    private const val CHANNEL_DESC_GRADES = "OBS/DEBİS üzerinde açıklanan yeni vize, quiz, final, bütünleme ve harf notu bildirimleri"
 
     fun createNotificationChannel(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -292,48 +292,6 @@ object NotificationHelper {
         try {
             val notificationManager = NotificationManagerCompat.from(context)
             val notificationId = "grade_${diff.courseCode}_${diff.evaluationType}_$accountPrefix".hashCode()
-            notificationManager.notify(notificationId, builder.build())
-        } catch (e: SecurityException) {
-            e.printStackTrace()
-        }
-    }
-
-    fun showDebisSessionExpiredNotification(
-        context: Context,
-        accountUsername: String? = null
-    ) {
-        createNotificationChannel(context)
-
-        val accountPrefix = accountUsername?.substringBefore("@")?.takeIf { it.isNotBlank() }
-        val intent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        val notificationId = "debis_session_expired_${accountPrefix.orEmpty()}".hashCode()
-        val pendingIntent = PendingIntent.getActivity(
-            context,
-            notificationId,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val title = if (accountPrefix != null) {
-            "🔑 [$accountPrefix] DEBİS Oturumu Sona Erdi"
-        } else {
-            "🔑 DEBİS Oturumu Sona Erdi"
-        }
-        val body = "Sınav notu takibinin kesintisiz devam etmesi için dokunup güvenlik kodunu (CAPTCHA) yenileyin."
-
-        val builder = NotificationCompat.Builder(context, CHANNEL_ID_GRADES)
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .setContentIntent(pendingIntent)
-
-        try {
-            val notificationManager = NotificationManagerCompat.from(context)
             notificationManager.notify(notificationId, builder.build())
         } catch (e: SecurityException) {
             e.printStackTrace()

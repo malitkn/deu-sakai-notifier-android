@@ -9,7 +9,6 @@ import kotlinx.coroutines.withContext
 import tr.edu.deu.sakainotifier.data.api.DebisClient
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
-import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
@@ -41,20 +40,8 @@ class SakaiNotificationWorker(
             return@withContext Result.success()
         }
 
-        // Quiet hours protection: skip heavy polling & notifications between 00:00 - 05:00,
-        // but still send lightweight DEBİS Keep-Alive heartbeat if a session is active so PHPSESSID doesn't expire overnight!
+        // Quiet hours protection: skip polling & notifications between 00:00 - 05:00
         if (securePrefs.isInQuietHours()) {
-            if (checkGrades) {
-                for (account in accounts) {
-                    val debisCookie = gradeStateManager.getSessionCookie(account.username)
-                    if (!debisCookie.isNullOrBlank()) {
-                        try {
-                            debisClient.sendKeepAlive(debisCookie)
-                        } catch (_: Exception) {
-                        }
-                    }
-                }
-            }
             return@withContext Result.success()
         }
 
@@ -126,31 +113,19 @@ class SakaiNotificationWorker(
                 }
             }
 
-            // 3. Poll DEBİS Grades & Send Keep-Alive (if session cookie exists)
-            val debisCookie = gradeStateManager.getSessionCookie(account.username)
-            if (gradeStateManager.isGradeMonitoringActive() && !debisCookie.isNullOrBlank()) {
+            // 3. Poll OBS / DEBİS Grades automatically (no CAPTCHA required)
+            if (checkGrades) {
                 try {
-                    // Send lightweight keep-alive heartbeat to reset PHP session idle timer
-                    debisClient.sendKeepAlive(debisCookie)
-
-                    val coursesResult = debisClient.fetchCourseOptions(debisCookie)
-                    if (coursesResult.isSuccess) {
-                        val courseOptions = coursesResult.getOrDefault(emptyList())
-                        val freshGrades = mutableListOf<CourseGrade>()
-
-                        for (option in courseOptions) {
-                            val detailResult = debisClient.fetchCourseGradeDetails(
-                                sessionCookie = debisCookie,
-                                courseOption = option,
-                                studentNo = account.username.substringBefore("@")
-                            )
-                            if (detailResult.isSuccess) {
-                                freshGrades.add(detailResult.getOrThrow())
-                            }
-                        }
+                    val cachedCookie = gradeStateManager.getSessionCookie(account.username)
+                    val debisRes = debisClient.fetchAllCurrentTermGrades(account, cachedCookie)
+                    if (debisRes.isSuccess) {
+                        val (activeCookie, freshGrades) = debisRes.getOrThrow()
+                        gradeStateManager.saveSessionCookie(account.username, activeCookie)
 
                         if (freshGrades.isNotEmpty()) {
-                            if (gradeStateManager.isFirstGradeBoot(account.username)) {
+                            if (gradeStateManager.isFirstGradeBoot(account.username) ||
+                                gradeStateManager.getSavedGrades(account.username).isEmpty()
+                            ) {
                                 // Silent bootstrap: save initial snapshot without firing alerts
                                 gradeStateManager.saveGradeSnapshot(account.username, freshGrades)
                                 gradeStateManager.setFirstGradeBootCompleted(account.username)
@@ -160,17 +135,6 @@ class SakaiNotificationWorker(
                                 for (diff in differences) {
                                     NotificationHelper.showGradeNotification(context, diff, account.username)
                                 }
-                            }
-                        }
-                    } else {
-                        val ex = coursesResult.exceptionOrNull()
-                        if (ex is IllegalStateException) {
-                            // Session expired: clear invalid cookie and notify student once to refresh CAPTCHA
-                            val shouldNotify = !gradeStateManager.wasSessionExpiredNotified(account.username)
-                            gradeStateManager.saveSessionCookie(account.username, null)
-                            if (shouldNotify) {
-                                gradeStateManager.markSessionExpiredNotified(account.username)
-                                NotificationHelper.showDebisSessionExpiredNotification(context, account.username)
                             }
                         }
                     }

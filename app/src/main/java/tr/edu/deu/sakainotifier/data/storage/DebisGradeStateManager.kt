@@ -3,14 +3,14 @@ package tr.edu.deu.sakainotifier.data.storage
 import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
-import org.json.JSONObject
 import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.model.GradeDifference
 
 /**
- * Manages persistent local state for DEBİS grades.
- * Enforces "Silent Bootstrap" on initial account setup (recording existing grades without firing push alerts)
- * and calculates precise diffs on subsequent background polls.
+ * Manages persistent local state for DEÜ OBS / DEBİS grades.
+ * Enforces "Silent Bootstrap" on initial setup (recording existing grades without firing push alerts),
+ * preserves local snapshots across monitoring toggle off/on cycles, and calculates precise diffs
+ * on subsequent polls.
  */
 class DebisGradeStateManager(context: Context) {
 
@@ -23,7 +23,6 @@ class DebisGradeStateManager(context: Context) {
         const val KEY_GRADE_SNAPSHOT = "key_grade_snapshot"
         const val KEY_DEBIS_COOKIE = "key_debis_cookie"
         const val KEY_GRADE_MONITORING_ACTIVE = "key_grade_monitoring_active"
-        private const val KEY_SESSION_EXPIRED_NOTIFIED = "key_debis_session_expired_notified"
     }
 
     private fun getAccountKey(baseKey: String, username: String): String {
@@ -43,6 +42,10 @@ class DebisGradeStateManager(context: Context) {
         return prefs.getBoolean(KEY_GRADE_MONITORING_ACTIVE, false)
     }
 
+    /**
+     * Toggles background grade monitoring on/off without touching saved local snapshots
+     * or first-boot state, so turning tracking back on avoids redundant bootstrap notifications.
+     */
     fun setGradeMonitoringActive(active: Boolean) {
         prefs.edit().putBoolean(KEY_GRADE_MONITORING_ACTIVE, active).apply()
     }
@@ -54,25 +57,13 @@ class DebisGradeStateManager(context: Context) {
 
     fun saveSessionCookie(username: String, cookie: String?) {
         val key = getAccountKey(KEY_DEBIS_COOKIE, username)
-        val expiredKey = getAccountKey(KEY_SESSION_EXPIRED_NOTIFIED, username)
         if (!cookie.isNullOrBlank()) {
             prefs.edit()
                 .putString(key, cookie)
-                .putBoolean(expiredKey, false)
                 .apply()
         } else {
             prefs.edit().remove(key).apply()
         }
-    }
-
-    fun wasSessionExpiredNotified(username: String): Boolean {
-        val key = getAccountKey(KEY_SESSION_EXPIRED_NOTIFIED, username)
-        return prefs.getBoolean(key, false)
-    }
-
-    fun markSessionExpiredNotified(username: String) {
-        val key = getAccountKey(KEY_SESSION_EXPIRED_NOTIFIED, username)
-        prefs.edit().putBoolean(key, true).apply()
     }
 
     fun isFirstGradeBoot(username: String): Boolean {
@@ -112,130 +103,94 @@ class DebisGradeStateManager(context: Context) {
 
     /**
      * Compares incoming fresh grades with local snapshot.
-     * Detects newly announced Vize, Final, Bütünleme or Letter grades.
+     * Handles silent initialization when empty, resets baseline silently on semester change,
+     * and detects newly announced or updated evaluations (Vize, Quiz, Ödev, Final, Bütünleme, Harf Notu).
      */
     fun detectDifferences(
         username: String,
         freshGrades: List<CourseGrade>
     ): List<GradeDifference> {
-        val oldGradesMap = getSavedGrades(username).associateBy { it.courseCode }
+        if (freshGrades.isEmpty()) return emptyList()
+
+        val oldGrades = getSavedGrades(username)
+        if (oldGrades.isEmpty()) {
+            saveGradeSnapshot(username, freshGrades)
+            setFirstGradeBootCompleted(username)
+            return emptyList()
+        }
+
+        val oldTermId = oldGrades.firstOrNull { it.termId.isNotBlank() }?.termId.orEmpty()
+        val newTermId = freshGrades.firstOrNull { it.termId.isNotBlank() }?.termId.orEmpty()
+        if (oldTermId.isNotBlank() && newTermId.isNotBlank() && oldTermId != newTermId) {
+            // Semester rolled over: store new term as silent baseline
+            saveGradeSnapshot(username, freshGrades)
+            return emptyList()
+        }
+
+        val oldGradesMap = oldGrades.associateBy { it.courseCode }
         val differences = mutableListOf<GradeDifference>()
 
         for (fresh in freshGrades) {
             val old = oldGradesMap[fresh.courseCode]
 
             if (old == null) {
-                // New course appeared with existing grades
-                if (!fresh.final.isNullOrBlank()) {
-                    differences.add(
-                        GradeDifference(
-                            courseCode = fresh.courseCode,
-                            courseName = fresh.courseName,
-                            evaluationType = "Final",
-                            oldValue = null,
-                            newValue = fresh.final,
-                            letterGrade = fresh.letterGrade,
-                            status = fresh.status
+                // New course appeared in the active term with announced evaluations
+                for ((evalName, score) in fresh.evaluations) {
+                    if (score.isNotBlank()) {
+                        differences.add(
+                            GradeDifference(
+                                courseCode = fresh.courseCode,
+                                courseName = fresh.courseName,
+                                evaluationType = evalName,
+                                oldValue = null,
+                                newValue = score,
+                                letterGrade = fresh.letterGrade,
+                                status = fresh.status
+                            )
                         )
-                    )
-                } else if (!fresh.vize.isNullOrBlank()) {
-                    differences.add(
-                        GradeDifference(
-                            courseCode = fresh.courseCode,
-                            courseName = fresh.courseName,
-                            evaluationType = "Vize",
-                            oldValue = null,
-                            newValue = fresh.vize
-                        )
-                    )
+                    }
                 }
                 continue
             }
 
-            // Check Vize announcement
-            if (old.vize == null && fresh.vize != null) {
-                differences.add(
-                    GradeDifference(
-                        courseCode = fresh.courseCode,
-                        courseName = fresh.courseName,
-                        evaluationType = "Vize",
-                        oldValue = null,
-                        newValue = fresh.vize
-                    )
-                )
-            } else if (old.vize != null && fresh.vize != null && old.vize != fresh.vize) {
-                differences.add(
-                    GradeDifference(
-                        courseCode = fresh.courseCode,
-                        courseName = fresh.courseName,
-                        evaluationType = "Vize (Güncellendi)",
-                        oldValue = old.vize,
-                        newValue = fresh.vize
-                    )
-                )
-            }
-
             var examDiffTriggeredWithLetter = false
 
-            // Check Final announcement
-            if (old.final == null && fresh.final != null) {
-                examDiffTriggeredWithLetter = true
-                differences.add(
-                    GradeDifference(
-                        courseCode = fresh.courseCode,
-                        courseName = fresh.courseName,
-                        evaluationType = "Final",
-                        oldValue = null,
-                        newValue = fresh.final,
-                        letterGrade = fresh.letterGrade,
-                        status = fresh.status
+            for ((evalName, newScore) in fresh.evaluations) {
+                val oldScore = old.evaluations[evalName]
+                val isFinalOrBut = evalName.contains("final", ignoreCase = true) ||
+                    evalName.contains("bütünleme", ignoreCase = true) ||
+                    evalName.contains("yarıyıl sonu", ignoreCase = true)
+
+                if (oldScore == null && newScore.isNotBlank()) {
+                    if (isFinalOrBut) examDiffTriggeredWithLetter = true
+                    differences.add(
+                        GradeDifference(
+                            courseCode = fresh.courseCode,
+                            courseName = fresh.courseName,
+                            evaluationType = evalName,
+                            oldValue = null,
+                            newValue = newScore,
+                            letterGrade = if (isFinalOrBut) fresh.letterGrade else null,
+                            status = if (isFinalOrBut) fresh.status else null
+                        )
                     )
-                )
-            } else if (old.final != null && fresh.final != null && old.final != fresh.final) {
-                examDiffTriggeredWithLetter = true
-                differences.add(
-                    GradeDifference(
-                        courseCode = fresh.courseCode,
-                        courseName = fresh.courseName,
-                        evaluationType = "Final (Güncellendi)",
-                        oldValue = old.final,
-                        newValue = fresh.final,
-                        letterGrade = fresh.letterGrade,
-                        status = fresh.status
+                } else if (oldScore != null && oldScore != newScore) {
+                    if (isFinalOrBut) examDiffTriggeredWithLetter = true
+                    differences.add(
+                        GradeDifference(
+                            courseCode = fresh.courseCode,
+                            courseName = fresh.courseName,
+                            evaluationType = "$evalName (Güncellendi)",
+                            oldValue = oldScore,
+                            newValue = newScore,
+                            letterGrade = if (isFinalOrBut) fresh.letterGrade else null,
+                            status = if (isFinalOrBut) fresh.status else null
+                        )
                     )
-                )
+                }
             }
 
-            // Check Bütünleme announcement
-            if (old.butunleme == null && fresh.butunleme != null) {
-                examDiffTriggeredWithLetter = true
-                differences.add(
-                    GradeDifference(
-                        courseCode = fresh.courseCode,
-                        courseName = fresh.courseName,
-                        evaluationType = "Bütünleme",
-                        oldValue = null,
-                        newValue = fresh.butunleme,
-                        letterGrade = fresh.letterGrade,
-                        status = fresh.status
-                    )
-                )
-            } else if (old.butunleme != null && fresh.butunleme != null && old.butunleme != fresh.butunleme) {
-                examDiffTriggeredWithLetter = true
-                differences.add(
-                    GradeDifference(
-                        courseCode = fresh.courseCode,
-                        courseName = fresh.courseName,
-                        evaluationType = "Bütünleme (Güncellendi)",
-                        oldValue = old.butunleme,
-                        newValue = fresh.butunleme,
-                        letterGrade = fresh.letterGrade,
-                        status = fresh.status
-                    )
-                )
-            }
-
-            // Check Letter Grade (Yarıyıl Sonu Başarı Notu) announcement or update (only if not already bundled in Final/Büt alert)
+            // Check Letter Grade announcement or update (only if not already bundled in Final/Büt alert)
             if (!examDiffTriggeredWithLetter) {
                 if (old.letterGrade == null && fresh.letterGrade != null) {
                     differences.add(

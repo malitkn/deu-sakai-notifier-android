@@ -12,7 +12,6 @@ import kotlinx.coroutines.launch
 import tr.edu.deu.sakainotifier.data.api.DebisClient
 import tr.edu.deu.sakainotifier.data.api.DeuWebmailClient
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
-import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager
 import tr.edu.deu.sakainotifier.data.storage.NotificationStateManager
 import tr.edu.deu.sakainotifier.data.storage.SecurePreferencesManager
@@ -55,22 +54,7 @@ class AlarmReceiver : BroadcastReceiver() {
 
         receiverScope.launch {
             try {
-                if (securePrefs.isInQuietHours()) {
-                    // During night quiet hours (00:00 - 05:00), skip heavy polling & alerts,
-                    // but send lightweight DEBİS Keep-Alive if session is active so PHPSESSID survives until morning
-                    if (checkGrades) {
-                        val debisClient = DebisClient()
-                        for (account in securePrefs.getAccounts()) {
-                            val cookie = gradeStateManager.getSessionCookie(account.username)
-                            if (!cookie.isNullOrBlank()) {
-                                try {
-                                    debisClient.sendKeepAlive(cookie)
-                                } catch (_: Exception) {
-                                }
-                            }
-                        }
-                    }
-                } else {
+                if (!securePrefs.isInQuietHours()) {
                     performPoll(context, securePrefs, gradeStateManager, checkSakai, checkMail, checkGrades)
                 }
             } catch (e: Exception) {
@@ -165,30 +149,19 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
             }
 
-            // 3. Poll DEBİS Grades & Send Keep-Alive (if session cookie exists)
-            val debisCookie = gradeStateManager.getSessionCookie(account.username)
-            if (checkGrades && !debisCookie.isNullOrBlank()) {
+            // 3. Poll OBS / DEBİS Grades automatically (no CAPTCHA required)
+            if (checkGrades) {
                 try {
-                    debisClient.sendKeepAlive(debisCookie)
-
-                    val coursesResult = debisClient.fetchCourseOptions(debisCookie)
-                    if (coursesResult.isSuccess) {
-                        val courseOptions = coursesResult.getOrDefault(emptyList())
-                        val freshGrades = mutableListOf<CourseGrade>()
-
-                        for (option in courseOptions) {
-                            val detailResult = debisClient.fetchCourseGradeDetails(
-                                sessionCookie = debisCookie,
-                                courseOption = option,
-                                studentNo = account.username.substringBefore("@")
-                            )
-                            if (detailResult.isSuccess) {
-                                freshGrades.add(detailResult.getOrThrow())
-                            }
-                        }
+                    val cachedCookie = gradeStateManager.getSessionCookie(account.username)
+                    val debisRes = debisClient.fetchAllCurrentTermGrades(account, cachedCookie)
+                    if (debisRes.isSuccess) {
+                        val (activeCookie, freshGrades) = debisRes.getOrThrow()
+                        gradeStateManager.saveSessionCookie(account.username, activeCookie)
 
                         if (freshGrades.isNotEmpty()) {
-                            if (gradeStateManager.isFirstGradeBoot(account.username)) {
+                            if (gradeStateManager.isFirstGradeBoot(account.username) ||
+                                gradeStateManager.getSavedGrades(account.username).isEmpty()
+                            ) {
                                 gradeStateManager.saveGradeSnapshot(account.username, freshGrades)
                                 gradeStateManager.setFirstGradeBootCompleted(account.username)
                             } else {
@@ -196,16 +169,6 @@ class AlarmReceiver : BroadcastReceiver() {
                                 for (diff in differences) {
                                     NotificationHelper.showGradeNotification(context, diff, account.username)
                                 }
-                            }
-                        }
-                    } else {
-                        val ex = coursesResult.exceptionOrNull()
-                        if (ex is IllegalStateException) {
-                            val shouldNotify = !gradeStateManager.wasSessionExpiredNotified(account.username)
-                            gradeStateManager.saveSessionCookie(account.username, null)
-                            if (shouldNotify) {
-                                gradeStateManager.markSessionExpiredNotified(account.username)
-                                NotificationHelper.showDebisSessionExpiredNotification(context, account.username)
                             }
                         }
                     }

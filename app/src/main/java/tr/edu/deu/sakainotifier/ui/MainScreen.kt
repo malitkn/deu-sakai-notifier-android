@@ -39,7 +39,6 @@ import tr.edu.deu.sakainotifier.data.api.WebmailTestResult
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
 import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
 import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
-import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.model.SakaiAccount
 import tr.edu.deu.sakainotifier.data.model.SakaiNotification
 import tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager
@@ -83,15 +82,9 @@ fun MainScreen(
     var isMailMonitoringActive by remember { mutableStateOf(securePrefs.isMailMonitoringActive) }
     val debisGradeStateManager = remember { DebisGradeStateManager(context) }
     var isGradeMonitoringActive by remember { mutableStateOf(debisGradeStateManager.isGradeMonitoringActive()) }
-    var showDebisLoginDialog by remember { mutableStateOf(false) }
     var showGradesSummary by remember { mutableStateOf(false) }
-    var debisSessionCookie by remember(registeredAccounts) {
-        val primary = registeredAccounts.firstOrNull()?.username.orEmpty()
-        mutableStateOf(debisGradeStateManager.getSessionCookie(primary))
-    }
     var savedDebisGrades by remember(registeredAccounts) {
-        val primary = registeredAccounts.firstOrNull()?.username.orEmpty()
-        mutableStateOf(debisGradeStateManager.getSavedGrades(primary))
+        mutableStateOf(registeredAccounts.flatMap { debisGradeStateManager.getSavedGrades(it.username) })
     }
     var isSyncingDebisGrades by remember { mutableStateOf(false) }
     var isNightQuietHoursEnabled by remember { mutableStateOf(securePrefs.isNightQuietHoursEnabled) }
@@ -176,9 +169,8 @@ fun MainScreen(
                 recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                 lastCheckTime = securePrefs.lastCheckTimestamp
                 isNightQuietHoursEnabled = securePrefs.isNightQuietHoursEnabled
-                val primary = registeredAccounts.firstOrNull()?.username.orEmpty()
-                debisSessionCookie = debisGradeStateManager.getSessionCookie(primary)
-                savedDebisGrades = debisGradeStateManager.getSavedGrades(primary)
+                savedDebisGrades = registeredAccounts.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                isGradeMonitoringActive = debisGradeStateManager.isGradeMonitoringActive()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -203,12 +195,12 @@ fun MainScreen(
             }
         }
         val debisListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key != null && (key.startsWith(DebisGradeStateManager.KEY_DEBIS_COOKIE) ||
-                    key.startsWith(DebisGradeStateManager.KEY_GRADE_SNAPSHOT))
+            if (key != null && (key.startsWith(DebisGradeStateManager.KEY_GRADE_SNAPSHOT) ||
+                    key == DebisGradeStateManager.KEY_GRADE_MONITORING_ACTIVE)
             ) {
-                val primary = securePrefs.getAccounts().firstOrNull()?.username.orEmpty()
-                debisSessionCookie = debisGradeStateManager.getSessionCookie(primary)
-                savedDebisGrades = debisGradeStateManager.getSavedGrades(primary)
+                val accs = securePrefs.getAccounts()
+                savedDebisGrades = accs.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                isGradeMonitoringActive = debisGradeStateManager.isGradeMonitoringActive()
             }
         }
         stateManager.registerChangeListener(listener)
@@ -585,9 +577,8 @@ fun MainScreen(
                             )
                         }
 
-                        // DEBİS Sınav Notları Takibi Toggle & Giriş Butonu
+                        // DEBİS / OBS Sınav Notları Takibi Toggle & Yerel Hafıza Özeti
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                        val hasDebisSession = !debisSessionCookie.isNullOrBlank()
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -600,19 +591,19 @@ fun MainScreen(
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Text(
-                                        text = "📊 DEBİS Sınav Notları",
+                                        text = "📊 DEBİS / OBS Sınav Notları",
                                         fontWeight = FontWeight.SemiBold,
                                         fontSize = 14.sp,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
-                                    if (hasDebisSession) {
+                                    if (isSyncingDebisGrades) {
                                         Surface(
-                                            color = Color(0xFFE8F5E9),
+                                            color = Color(0xFFFFF3E0),
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
-                                                text = if (isSyncingDebisGrades) "Senkronize ediliyor..." else "Bağlı",
-                                                color = Color(0xFF2E7D32),
+                                                text = "Senkronize ediliyor...",
+                                                color = Color(0xFFE65100),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -620,12 +611,25 @@ fun MainScreen(
                                         }
                                     } else if (isGradeMonitoringActive) {
                                         Surface(
-                                            color = Color(0xFFFFF3E0),
+                                            color = Color(0xFFE8F5E9),
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
-                                                text = "Oturum Gerekli",
-                                                color = Color(0xFFE65100),
+                                                text = "Aktif",
+                                                color = Color(0xFF2E7D32),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    } else if (savedDebisGrades.isNotEmpty()) {
+                                        Surface(
+                                            color = Color(0xFFE3F2FD),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "Hafızada (${savedDebisGrades.size} Ders)",
+                                                color = Color(0xFF1565C0),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
@@ -634,45 +638,29 @@ fun MainScreen(
                                     }
                                 }
                                 Text(
-                                    text = if (hasDebisSession) {
-                                        if (savedDebisGrades.isNotEmpty()) {
-                                            "${savedDebisGrades.size} ders hafızaya alındı; yeni not açıklandığında bildirim gönderilir."
-                                        } else {
-                                            "Vize, final ve harf notları arka planda taranıyor."
-                                        }
-                                    } else {
-                                        "Not bildirimleri için DEBİS hesabınızı güvenlik koduyla bağlayın."
+                                    text = when {
+                                        isGradeMonitoringActive && savedDebisGrades.isNotEmpty() ->
+                                            "${savedDebisGrades.size} ders hafızada; yeni sınav notu açıklandığında bildirim gönderilir."
+                                        !isGradeMonitoringActive && savedDebisGrades.isNotEmpty() ->
+                                            "Takip kapalı (arka planda istek atılmaz). ${savedDebisGrades.size} dersin not hafızası korunuyor."
+                                        else ->
+                                            "Vize, quiz, final ve harf notlarını otomatik kontrol eder."
                                     },
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
+                                if (savedDebisGrades.isNotEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     TextButton(
-                                        onClick = { showDebisLoginDialog = true },
+                                        onClick = { showGradesSummary = !showGradesSummary },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
                                         Text(
-                                            text = if (hasDebisSession) "🔄 Oturumu Yenile" else "🔑 Giriş Yap (CAPTCHA)",
+                                            text = if (showGradesSummary) "▲ Notları Gizle" else "📋 Notları Gör (${savedDebisGrades.size})",
                                             fontSize = 12.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.secondary
                                         )
-                                    }
-                                    if (savedDebisGrades.isNotEmpty()) {
-                                        TextButton(
-                                            onClick = { showGradesSummary = !showGradesSummary },
-                                            contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
-                                        ) {
-                                            Text(
-                                                text = if (showGradesSummary) "▲ Notları Gizle" else "📋 Notları Gör (${savedDebisGrades.size})",
-                                                fontSize = 12.sp,
-                                                fontWeight = FontWeight.SemiBold,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                        }
                                     }
                                 }
                             }
@@ -681,6 +669,14 @@ fun MainScreen(
                                 onCheckedChange = { active ->
                                     if (active && registeredAccounts.isEmpty()) {
                                         Toast.makeText(context, "Lütfen önce en az bir öğrenci hesabı ekleyin.", Toast.LENGTH_SHORT).show()
+                                        return@Switch
+                                    }
+                                    if (active && registeredAccounts.none { canAccountLoginToObs(it) }) {
+                                        Toast.makeText(
+                                            context,
+                                            "Not takibi için lütfen hesabınıza öğrenci e-postanızı (ad.soyad@ogr.deu.edu.tr) ekleyin (✏️ Düzenle).",
+                                            Toast.LENGTH_LONG
+                                        ).show()
                                         return@Switch
                                     }
                                     isGradeMonitoringActive = active
@@ -692,14 +688,86 @@ fun MainScreen(
                                         AlarmScheduler.cancel(context)
                                         WorkScheduler.cancel(context)
                                     }
-                                    if (active && !hasDebisSession) {
-                                        showDebisLoginDialog = true
+                                    if (active) {
+                                        isSyncingDebisGrades = true
+                                        coroutineScope.launch {
+                                            try {
+                                                var totalCoursesSynced = 0
+                                                var totalNewDiffs = 0
+                                                var anyBootstrapped = false
+                                                var lastErrorMsg: String? = null
+
+                                                for (acc in registeredAccounts.filter { canAccountLoginToObs(it) }) {
+                                                    val cachedCookie = debisGradeStateManager.getSessionCookie(acc.username)
+                                                    val res = debisClient.fetchAllCurrentTermGrades(acc, cachedCookie)
+                                                    if (res.isSuccess) {
+                                                        val (activeCookie, freshGrades) = res.getOrThrow()
+                                                        debisGradeStateManager.saveSessionCookie(acc.username, activeCookie)
+                                                        if (freshGrades.isNotEmpty()) {
+                                                            totalCoursesSynced += freshGrades.size
+                                                            if (debisGradeStateManager.isFirstGradeBoot(acc.username) ||
+                                                                debisGradeStateManager.getSavedGrades(acc.username).isEmpty()
+                                                            ) {
+                                                                debisGradeStateManager.saveGradeSnapshot(acc.username, freshGrades)
+                                                                debisGradeStateManager.setFirstGradeBootCompleted(acc.username)
+                                                                anyBootstrapped = true
+                                                            } else {
+                                                                val diffs = debisGradeStateManager.detectDifferences(acc.username, freshGrades)
+                                                                for (diff in diffs) {
+                                                                    NotificationHelper.showGradeNotification(context, diff, acc.username)
+                                                                }
+                                                                totalNewDiffs += diffs.size
+                                                            }
+                                                        }
+                                                    } else {
+                                                        lastErrorMsg = res.exceptionOrNull()?.message
+                                                    }
+                                                }
+
+                                                savedDebisGrades = registeredAccounts.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                                                when {
+                                                    anyBootstrapped && totalCoursesSynced > 0 -> {
+                                                        showGradesSummary = true
+                                                        Toast.makeText(
+                                                            context,
+                                                            "✅ $totalCoursesSynced dersin mevcut notları hafızaya alındı.",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    totalNewDiffs > 0 -> {
+                                                        showGradesSummary = true
+                                                        Toast.makeText(
+                                                            context,
+                                                            "🎓 $totalNewDiffs yeni sınav notu tespit edildi!",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    totalCoursesSynced > 0 -> {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "✅ DEBİS/OBS not takibi aktif ($totalCoursesSynced ders güncel).",
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+                                                    !lastErrorMsg.isNullOrBlank() -> {
+                                                        Toast.makeText(
+                                                            context,
+                                                            "⚠️ OBS senkronizasyon uyarısı: $lastErrorMsg",
+                                                            Toast.LENGTH_LONG
+                                                        ).show()
+                                                    }
+                                                }
+                                            } finally {
+                                                isSyncingDebisGrades = false
+                                            }
+                                        }
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            "DEBİS/OBS not takibi durduruldu (yerel not hafızası korundu).",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
                                     }
-                                    Toast.makeText(
-                                        context,
-                                        if (active) "DEBİS not takibi aktif edildi." else "DEBİS not takibi durduruldu.",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
                                 }
                             )
                         }
@@ -741,13 +809,7 @@ fun MainScreen(
                                                     color = MaterialTheme.colorScheme.onSurface
                                                 )
                                                 Text(
-                                                    text = buildString {
-                                                        append("Vize: ${grade.vize ?: "—"}")
-                                                        append("  •  Final: ${grade.final ?: "—"}")
-                                                        if (!grade.butunleme.isNullOrBlank()) {
-                                                            append("  •  Büt: ${grade.butunleme}")
-                                                        }
-                                                    },
+                                                    text = grade.formatEvaluationsSummary(),
                                                     fontSize = 11.sp,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
@@ -1198,7 +1260,7 @@ fun MainScreen(
                             placeholder = { Text("Örn: ad.soyad@ogr.deu.edu.tr") },
                             supportingText = {
                                 Text(
-                                    text = "Boş bırakılırsa e-posta takibi yapılmaz. Ayrı şifre gerekmez (şifre aynıdır).",
+                                    text = "Öğrenci e-postası ve DEBİS/OBS sınav notu takibi için gereklidir (şifre aynıdır).",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1597,29 +1659,20 @@ fun MainScreen(
                                                     }
                                                 }
 
-                                                // 3. Check DEBİS Grades if session cookie exists
-                                                val activeDebisCookie = debisGradeStateManager.getSessionCookie(acc.username)
-                                                if (isGradeMonitoringActive && !activeDebisCookie.isNullOrBlank()) {
-                                                    debisClient.sendKeepAlive(activeDebisCookie)
-                                                    val coursesRes = debisClient.fetchCourseOptions(activeDebisCookie)
-                                                    if (coursesRes.isSuccess) {
-                                                        val options = coursesRes.getOrDefault(emptyList())
-                                                        val freshGrades = mutableListOf<CourseGrade>()
-                                                        for (opt in options) {
-                                                            val detailRes = debisClient.fetchCourseGradeDetails(
-                                                                sessionCookie = activeDebisCookie,
-                                                                courseOption = opt,
-                                                                studentNo = acc.shortUsername
-                                                            )
-                                                            if (detailRes.isSuccess) {
-                                                                freshGrades.add(detailRes.getOrThrow())
-                                                            }
-                                                        }
+                                                // 3. Check OBS / DEBİS Grades automatically if enabled
+                                                if (isGradeMonitoringActive && canAccountLoginToObs(acc)) {
+                                                    val cachedCookie = debisGradeStateManager.getSessionCookie(acc.username)
+                                                    val debisRes = debisClient.fetchAllCurrentTermGrades(acc, cachedCookie)
+                                                    if (debisRes.isSuccess) {
+                                                        val (activeCookie, freshGrades) = debisRes.getOrThrow()
+                                                        debisGradeStateManager.saveSessionCookie(acc.username, activeCookie)
                                                         if (freshGrades.isNotEmpty()) {
-                                                            if (debisGradeStateManager.isFirstGradeBoot(acc.username)) {
+                                                            if (debisGradeStateManager.isFirstGradeBoot(acc.username) ||
+                                                                debisGradeStateManager.getSavedGrades(acc.username).isEmpty()
+                                                            ) {
                                                                 debisGradeStateManager.saveGradeSnapshot(acc.username, freshGrades)
                                                                 debisGradeStateManager.setFirstGradeBootCompleted(acc.username)
-                                                                parts.add("DEBİS: ${freshGrades.size} ders hafızaya alındı")
+                                                                parts.add("OBS: ${freshGrades.size} ders hafızaya alındı")
                                                             } else {
                                                                 val diffs = debisGradeStateManager.detectDifferences(acc.username, freshGrades)
                                                                 if (diffs.isNotEmpty()) {
@@ -1632,17 +1685,13 @@ fun MainScreen(
                                                                     parts.add("notlar güncel (${freshGrades.size} ders)")
                                                                 }
                                                             }
-                                                            savedDebisGrades = debisGradeStateManager.getSavedGrades(acc.username)
+                                                            savedDebisGrades = currentAccs.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                                                        } else {
+                                                            parts.add("notlar: ders bulunamadı")
                                                         }
                                                     } else {
-                                                        val ex = coursesRes.exceptionOrNull()
-                                                        if (ex is IllegalStateException) {
-                                                            debisGradeStateManager.saveSessionCookie(acc.username, null)
-                                                            debisSessionCookie = null
-                                                            parts.add("DEBİS: ⚠️ Oturum süresi doldu")
-                                                        } else {
-                                                            parts.add("DEBİS: ⚠️ Bağlantı hatası")
-                                                        }
+                                                        val gErr = debisRes.exceptionOrNull()?.message?.take(80) ?: "Bağlantı hatası"
+                                                        parts.add("OBS: ⚠️ $gErr")
                                                     }
                                                 }
 
@@ -1999,70 +2048,10 @@ fun MainScreen(
             }
         )
     }
+}
 
-    if (showDebisLoginDialog) {
-        val primaryAccount = registeredAccounts.firstOrNull()
-        val activeStudentNo = primaryAccount?.username ?: ""
-        val activePassword = primaryAccount?.password ?: ""
-        DebisLoginDialog(
-            initialStudentNumber = activeStudentNo,
-            initialPassword = activePassword,
-            onDismiss = { showDebisLoginDialog = false },
-            onSuccess = { cookie, studentNo ->
-                debisGradeStateManager.saveSessionCookie(studentNo, cookie)
-                debisSessionCookie = cookie
-                isGradeMonitoringActive = true
-                debisGradeStateManager.setGradeMonitoringActive(true)
-                AlarmScheduler.scheduleNext(context, selectedInterval)
-                WorkScheduler.schedule(context, selectedInterval, forceUpdate = true)
-                showDebisLoginDialog = false
-                Toast.makeText(context, "DEBİS Bağlandı! İlk ders ve not tablosu çekiliyor...", Toast.LENGTH_SHORT).show()
-
-                // Perform immediate initial Silent Bootstrap (or diff check) right after login
-                isSyncingDebisGrades = true
-                coroutineScope.launch {
-                    try {
-                        val coursesRes = debisClient.fetchCourseOptions(cookie)
-                        if (coursesRes.isSuccess) {
-                            val options = coursesRes.getOrDefault(emptyList())
-                            val freshGrades = mutableListOf<CourseGrade>()
-                            for (opt in options) {
-                                val detailRes = debisClient.fetchCourseGradeDetails(
-                                    sessionCookie = cookie,
-                                    courseOption = opt,
-                                    studentNo = studentNo.substringBefore("@").trim()
-                                )
-                                if (detailRes.isSuccess) {
-                                    freshGrades.add(detailRes.getOrThrow())
-                                }
-                            }
-                            if (freshGrades.isNotEmpty()) {
-                                if (debisGradeStateManager.isFirstGradeBoot(studentNo)) {
-                                    debisGradeStateManager.saveGradeSnapshot(studentNo, freshGrades)
-                                    debisGradeStateManager.setFirstGradeBootCompleted(studentNo)
-                                } else {
-                                    val diffs = debisGradeStateManager.detectDifferences(studentNo, freshGrades)
-                                    for (diff in diffs) {
-                                        NotificationHelper.showGradeNotification(context, diff, studentNo)
-                                    }
-                                }
-                                savedDebisGrades = debisGradeStateManager.getSavedGrades(studentNo)
-                                showGradesSummary = true
-                                Toast.makeText(
-                                    context,
-                                    "✅ ${freshGrades.size} dersin mevcut notları hafızaya alındı.",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    } catch (_: Exception) {
-                    } finally {
-                        isSyncingDebisGrades = false
-                    }
-                }
-            }
-        )
-    }
+private fun canAccountLoginToObs(acc: SakaiAccount): Boolean {
+    return !acc.emailAddress.isNullOrBlank() || acc.shortUsername.any { !it.isDigit() }
 }
 
 private data class AccountBadgeTheme(

@@ -1,14 +1,18 @@
 package tr.edu.deu.sakainotifier.data.parser
 
+import org.json.JSONArray
 import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.model.DebisCourseOption
+import java.util.Locale
 import java.util.regex.Pattern
 
 /**
- * Pure Kotlin HTML & String Parser for DEÜ DEBİS Grade Pages.
+ * Pure Kotlin HTML & JSON Parser for DEÜ OBS (`obs.deu.edu.tr`) Grade Pages.
  * Avoids heavy external scraping dependencies for maximum mobile battery & memory efficiency.
  */
 object DebisParser {
+
+    private val TR_LOCALE = Locale("tr", "TR")
 
     private val OPTION_REGEX = Pattern.compile(
         """<option\s+[^>]*value=["']([^"']+)["'][^>]*>(.*?)</option>""",
@@ -16,17 +20,12 @@ object DebisParser {
     )
 
     private val TERM_SELECT_REGEX = Pattern.compile(
-        """<select[^>]*name=["']ogretim_donemi_id["'][^>]*>(.*?)</select>""",
-        Pattern.CASE_INSENSITIVE or Pattern.DOTALL
-    )
-
-    private val SELECTED_TERM_OPTION_REGEX = Pattern.compile(
-        """<option[^>]*value=["'](\d+)["'][^>]*selected[^>]*>|<option[^>]*selected[^>]*value=["'](\d+)["'][^>]*>""",
+        """<select[^>]*name=["'](?:donem|ogretim_donemi_id)["'][^>]*>(.*?)</select>""",
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL
     )
 
     private val ANY_TERM_OPTION_REGEX = Pattern.compile(
-        """<option[^>]*value=["'](\d{2,4})["'][^>]*>""",
+        """<option[^>]*value=["'](\d+)["'][^>]*>""",
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL
     )
 
@@ -40,36 +39,104 @@ object DebisParser {
         Pattern.CASE_INSENSITIVE or Pattern.DOTALL
     )
 
+    private val JSON_COURSE_OPTION_REGEX = Pattern.compile(
+        """"optionValue"\s*:\s*"([^"]*)"\s*,\s*"optionDisplay"\s*:\s*"([^"]*)""""
+    )
+
     /**
-     * Extracts the active semester ID (`ogretim_donemi_id`) from the DEBİS grade page HTML.
-     * Defaults to "324" if not explicitly present in the markup.
+     * Extracts the active/latest semester ID (`donem` or `ogretim_donemi_id`) from the grade page HTML.
+     * Picks the highest numeric option value (e.g. "333" over "324"). Defaults to "333".
      */
     fun parseActiveTermId(html: String): String {
         val selectMatcher = TERM_SELECT_REGEX.matcher(html)
-        val scopeHtml = if (selectMatcher.find()) selectMatcher.group(1) ?: html else html
-
-        val selectedMatcher = SELECTED_TERM_OPTION_REGEX.matcher(scopeHtml)
-        if (selectedMatcher.find()) {
-            val id = selectedMatcher.group(1) ?: selectedMatcher.group(2)
-            if (!id.isNullOrBlank()) return id.trim()
-        }
-
-        if (selectMatcher.reset().find()) {
+        if (selectMatcher.find()) {
+            val scopeHtml = selectMatcher.group(1) ?: ""
             val anyMatcher = ANY_TERM_OPTION_REGEX.matcher(scopeHtml)
-            if (anyMatcher.find()) {
-                val id = anyMatcher.group(1)
-                if (!id.isNullOrBlank()) return id.trim()
+            val termIds = mutableListOf<String>()
+            while (anyMatcher.find()) {
+                val id = anyMatcher.group(1)?.trim()
+                if (!id.isNullOrBlank()) {
+                    termIds.add(id)
+                }
+            }
+            val latestTermId = termIds.maxByOrNull { it.toIntOrNull() ?: 0 }
+            if (!latestTermId.isNullOrBlank()) {
+                return latestTermId
             }
         }
-
-        return "324"
+        return "333"
     }
 
     /**
-     * Extracts courses from `<select name="ders">` dropdown.
-     * Values match `B_BA+_1_9634_3_46_` pattern.
+     * Parses JSON response returned by `notgoruntuleme/index.ajax.php` (`islem=dersgetir&donem=<id>`).
+     * Sample item: `{"optionValue":"1128_194_1","optionDisplay":"KİM 1201 Kimya I."}`.
+     * Uses the full `optionValue` as `courseCode` so courses sharing a department prefix never collide.
+     */
+    fun parseCourseOptionsJson(jsonStr: String, termId: String = "333"): List<DebisCourseOption> {
+        val trimmed = jsonStr.trim()
+        if (trimmed.isEmpty()) return emptyList()
+
+        val results = mutableListOf<DebisCourseOption>()
+        try {
+            val jsonArray = JSONArray(trimmed)
+            for (i in 0 until jsonArray.length()) {
+                val obj = jsonArray.optJSONObject(i) ?: continue
+                buildCourseOptionFromPair(
+                    rawValue = obj.optString("optionValue", ""),
+                    rawDisplay = obj.optString("optionDisplay", ""),
+                    termId = termId
+                )?.let(results::add)
+            }
+        } catch (_: Exception) {
+            // Fall through to regex fallback when org.json is unavailable or stubbed in JVM unit tests.
+        }
+
+        if (results.isEmpty()) {
+            val matcher = JSON_COURSE_OPTION_REGEX.matcher(trimmed)
+            while (matcher.find()) {
+                buildCourseOptionFromPair(
+                    rawValue = matcher.group(1).orEmpty(),
+                    rawDisplay = matcher.group(2).orEmpty(),
+                    termId = termId
+                )?.let(results::add)
+            }
+        }
+        return results
+    }
+
+    private fun buildCourseOptionFromPair(
+        rawValue: String,
+        rawDisplay: String,
+        termId: String
+    ): DebisCourseOption? {
+        val cleanValue = rawValue.trim()
+        val cleanDisplay = cleanHtmlEntities(rawDisplay).trim()
+        if (cleanValue.isEmpty() || cleanValue == "0" || cleanDisplay.equals("Seçiniz", ignoreCase = true)) {
+            return null
+        }
+
+        val sube = cleanValue.substringAfterLast("_", "1").ifBlank { "1" }
+        return DebisCourseOption(
+            rawValue = cleanValue,
+            status = "",
+            letterGrade = null,
+            sube = sube,
+            courseCode = cleanValue,
+            credit = "",
+            mevcut = "",
+            courseName = cleanDisplay,
+            termId = termId
+        )
+    }
+
+    /**
+     * Extracts courses from JSON array or `<select name="ders">` dropdown HTML.
      */
     fun parseCourseSelectOptions(html: String): List<DebisCourseOption> {
+        if (html.trimStart().startsWith("[")) {
+            return parseCourseOptionsJson(html)
+        }
+
         val activeTermId = parseActiveTermId(html)
         val results = mutableListOf<DebisCourseOption>()
         val matcher = OPTION_REGEX.matcher(html)
@@ -78,7 +145,6 @@ object DebisParser {
             val rawValue = matcher.group(1)?.trim() ?: continue
             val rawText = cleanHtmlEntities(matcher.group(2) ?: "").trim()
 
-            // Skip default empty placeholder options (e.g. value="" or "Seçiniz")
             if (!rawValue.contains("_") || rawValue.equals("0", ignoreCase = true)) {
                 continue
             }
@@ -92,9 +158,7 @@ object DebisParser {
                 val courseCode = parts[3].trim()
                 val credit = parts[4].trim()
                 val mevcut = parts[5].trim()
-
-                // Clean course name (strip leading symbols or codes if duplicated)
-                val cleanName = cleanCourseName(rawText, courseCode)
+                val cleanName = cleanCourseName(rawText)
 
                 results.add(
                     DebisCourseOption(
@@ -109,6 +173,21 @@ object DebisParser {
                         termId = activeTermId
                     )
                 )
+            } else {
+                val sube = rawValue.substringAfterLast("_", "1").ifBlank { "1" }
+                results.add(
+                    DebisCourseOption(
+                        rawValue = rawValue,
+                        status = "",
+                        letterGrade = null,
+                        sube = sube,
+                        courseCode = rawValue,
+                        credit = "",
+                        mevcut = "",
+                        courseName = cleanCourseName(rawText),
+                        termId = activeTermId
+                    )
+                )
             }
         }
 
@@ -116,7 +195,7 @@ object DebisParser {
     }
 
     /**
-     * Parses grade details table returned from DEBİS POST query.
+     * Parses course metadata & evaluations table returned from OBS `notgoruntuleme/index.ajax.php` (`islem=notgetir`).
      */
     fun parseGradeTable(
         html: String,
@@ -128,6 +207,9 @@ object DebisParser {
         var letterGrade: String? = courseOption.letterGrade
         var status: String? = courseOption.status.ifEmpty { null }
         var classAverage: String? = null
+        var extractedCredit = courseOption.credit
+        var extractedSube = courseOption.sube
+        val evaluations = linkedMapOf<String, String>()
 
         val rowMatcher = ROW_REGEX.matcher(html)
         while (rowMatcher.find()) {
@@ -135,53 +217,69 @@ object DebisParser {
             val cells = extractCells(rowContent)
             if (cells.size < 2) continue
 
-            val evalName = cells[0].lowercase()
-            // Typically: cell 0: DEĞERLENDİRME ADI, cell 1: İLAN TARİHİ, cell 2: SINIF ORT, cell 3: ORT 2, last cell: SİZİN NOTUNUZ
-            val yourScore = cells.last().trim()
+            val firstCell = cells[0].trim()
+            val firstLower = firstCell.lowercase(TR_LOCALE)
 
-            when {
-                evalName.contains("vize") || evalName.contains("ara sınav") -> {
-                    if (isAnnounced(yourScore)) {
+            // Skip header and metadata rows; optionally capture credit/branch from metadata table
+            if (isMetadataOrHeaderRow(firstLower)) {
+                if (firstLower.contains("akts kredi") || (firstLower.contains("toplam kredi") && extractedCredit.isBlank())) {
+                    val creditVal = cells.getOrNull(1)?.trim().orEmpty()
+                    if (creditVal.isNotBlank()) extractedCredit = creditVal
+                } else if (firstLower.contains("şube adı") && extractedSube.isBlank()) {
+                    val subeVal = cells.getOrNull(1)?.trim().orEmpty()
+                    if (subeVal.isNotBlank()) extractedSube = subeVal
+                }
+                continue
+            }
+
+            val yourScore = cells.last().trim()
+            val announced = if (cells.size >= 5) {
+                val announceDate = cells[1].trim()
+                isAnnounced(announceDate) && isAnnounced(yourScore)
+            } else {
+                isAnnounced(yourScore)
+            }
+
+            if (!announced) continue
+
+            if (firstLower.contains("başarı notu")) {
+                letterGrade = yourScore
+                if (cells.size >= 4) {
+                    val avgCandidate = cells[cells.size - 2].trim()
+                    if (avgCandidate.isNotEmpty() && avgCandidate.all { it.isDigit() || it == '.' || it == ',' }) {
+                        classAverage = avgCandidate
+                    }
+                }
+            } else {
+                evaluations[firstCell] = yourScore
+                when {
+                    firstLower.contains("vize") || firstLower.contains("ara sınav") -> {
                         vize = yourScore
                     }
-                }
-                evalName.contains("final") || evalName.contains("yarıyıl sonu sınavı") -> {
-                    if (isAnnounced(yourScore)) {
+                    firstLower.contains("final") || firstLower.contains("yarıyıl sonu sınavı") -> {
                         finalNote = yourScore
                     }
-                }
-                evalName.contains("bütünleme notu") -> {
-                    if (isAnnounced(yourScore)) {
+                    firstLower.contains("bütünleme") -> {
                         butunleme = yourScore
-                    }
-                }
-                evalName.contains("yarıyıl sonu başarı") || evalName.contains("başarı notu") -> {
-                    if (isAnnounced(yourScore)) {
-                        letterGrade = yourScore
-                    }
-                    // Check if second-to-last cell has term average (e.g. 73)
-                    if (cells.size >= 4) {
-                        val avgCandidate = cells[cells.size - 2].trim()
-                        if (avgCandidate.isNotEmpty() && avgCandidate.all { it.isDigit() || it == '.' || it == ',' }) {
-                            classAverage = avgCandidate
-                        }
                     }
                 }
             }
         }
 
         // Check overall status banner (e.g. "BAŞARILI" or "BAŞARISIZ" at page footer)
-        if (html.contains("BAŞARILI", ignoreCase = true) && !html.contains("BAŞARISIZ", ignoreCase = true)) {
-            status = "B"
-        } else if (html.contains("BAŞARISIZ", ignoreCase = true)) {
+        if (html.contains("BAŞARISIZ", ignoreCase = true)) {
             status = "K"
+        } else if (html.contains("BAŞARILI", ignoreCase = true)) {
+            status = "B"
         }
 
         return CourseGrade(
             courseCode = courseOption.courseCode,
             courseName = courseOption.courseName,
-            credit = courseOption.credit,
-            sube = courseOption.sube,
+            credit = extractedCredit,
+            sube = extractedSube,
+            termId = courseOption.termId,
+            evaluations = evaluations,
             vize = vize,
             final = finalNote,
             butunleme = butunleme,
@@ -190,6 +288,18 @@ object DebisParser {
             classAverage = classAverage,
             lastUpdated = System.currentTimeMillis()
         )
+    }
+
+    private fun isMetadataOrHeaderRow(firstLower: String): Boolean {
+        return firstLower.contains("değerlendirme adı") ||
+            firstLower.contains("birim adı") ||
+            firstLower.contains("bölüm adı") ||
+            firstLower.contains("ders adı") ||
+            firstLower.contains("şube adı") ||
+            firstLower.contains("toplam kredi") ||
+            firstLower.contains("akts kredi") ||
+            firstLower.contains("tekrar sayısı") ||
+            firstLower.contains("öğretim elemanı")
     }
 
     private fun extractCells(rowHtml: String): List<String> {
@@ -203,7 +313,7 @@ object DebisParser {
     }
 
     private fun isAnnounced(text: String): Boolean {
-        val normalized = text.lowercase().trim()
+        val normalized = text.lowercase(TR_LOCALE).trim()
         if (normalized.isEmpty()) return false
         if (normalized.contains("ilan edilmemiş") || normalized.contains("ilan edilmedi") || normalized == "-") {
             return false
@@ -227,7 +337,7 @@ object DebisParser {
             .trim()
     }
 
-    private fun cleanCourseName(rawText: String, courseCode: String): String {
+    private fun cleanCourseName(rawText: String): String {
         var cleaned = rawText
         if (cleaned.startsWith("-") || cleaned.startsWith(".")) {
             cleaned = cleaned.substring(1).trim()

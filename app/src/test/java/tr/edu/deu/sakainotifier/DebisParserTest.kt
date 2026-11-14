@@ -1,171 +1,229 @@
 package tr.edu.deu.sakainotifier
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.model.DebisCourseOption
 import tr.edu.deu.sakainotifier.data.parser.DebisParser
 
 class DebisParserTest {
 
     @Test
-    fun testParseCourseSelectOptions() {
-        val sampleHtml = """
-            <select name="ders">
-                <option value="">Seçiniz</option>
-                <option value="B_BA+_1_9634_3_46_"> - Türk Dili II</option>
-                <option value="K_FF+_2_8812_4_60_">Matematik II</option>
-                <option value="__1_7743_2_30_">Yabancı Dil II</option>
+    fun testParseActiveTermIdFromObsDonemSelect() {
+        val obsHtml = """
+            <select name='donem' id='donem' onchange='change_donem()' class='form-control'>
+                <option value=''>Dönem Seçiniz</option>
+                <option value='333'>2026-2027 Güz</option>
+                <option value='324'>2025-2026 Bahar</option>
             </select>
         """.trimIndent()
 
-        val options = DebisParser.parseCourseSelectOptions(sampleHtml)
+        assertEquals("333", DebisParser.parseActiveTermId(obsHtml))
+    }
+
+    @Test
+    fun testParseCourseOptionsJson() {
+        val jsonResponse = """
+            [
+                {"optionValue":"","optionDisplay":"Seçiniz"},
+                {"optionValue":"9634_8_2","optionDisplay":"BDE 1003 Beden Eğitimi"},
+                {"optionValue":"1128_194_1","optionDisplay":"KİM 1201 Kimya I."},
+                {"optionValue":"1128_383_1","optionDisplay":"FİZ 1013 FİZİK I ( Mekanik )"}
+            ]
+        """.trimIndent()
+
+        val options = DebisParser.parseCourseOptionsJson(jsonResponse, termId = "333")
         assertEquals(3, options.size)
 
-        // 1. Completed course with passing grade
-        val turkDili = options[0]
-        assertEquals("B_BA+_1_9634_3_46_", turkDili.rawValue)
-        assertEquals("B", turkDili.status)
-        assertEquals("BA", turkDili.letterGrade)
-        assertEquals("1", turkDili.sube)
-        assertEquals("9634", turkDili.courseCode)
-        assertEquals("3", turkDili.credit)
-        assertEquals("46", turkDili.mevcut)
-        assertEquals("Türk Dili II", turkDili.courseName)
+        assertEquals("9634_8_2", options[0].courseCode)
+        assertEquals("2", options[0].sube)
+        assertEquals("BDE 1003 Beden Eğitimi", options[0].courseName)
+        assertEquals("333", options[0].termId)
 
-        // 2. Failed course
-        val matematik = options[1]
-        assertEquals("K", matematik.status)
-        assertEquals("FF", matematik.letterGrade)
-        assertEquals("8812", matematik.courseCode)
-        assertEquals("4", matematik.credit)
-
-        // 3. Pending course without letter grade yet
-        val yabanciDil = options[2]
-        assertEquals("", yabanciDil.status)
-        assertNull(yabanciDil.letterGrade)
-        assertEquals("7743", yabanciDil.courseCode)
+        // Courses sharing department prefix 1128 must keep distinct full courseCode keys
+        assertEquals("1128_194_1", options[1].courseCode)
+        assertEquals("1128_383_1", options[2].courseCode)
+        assertTrue(options[1].courseCode != options[2].courseCode)
     }
 
     @Test
-    fun testParseGradeTableWithAnnouncedGrades() {
-        // Matches the user's real screenshot: Vize 80, Final 88, Başarı Notu BA, Büt İLAN EDİLMEMİŞ
+    fun testParseGradeTableWithQuizAndVize() {
         val tableHtml = """
-            <table class="not_tablo">
-                <tr>
-                    <th>DEĞERLENDİRME ADI</th>
-                    <th>İLAN TARİHİ</th>
-                    <th>SINIF ORT.*</th>
-                    <th>ORT** 2</th>
-                    <th>SİZİN NOTUNUZ</th>
-                </tr>
-                <tr>
-                    <td>Vize</td>
-                    <td>29/04/2026</td>
-                    <td>76</td>
-                    <td></td>
-                    <td>80</td>
-                </tr>
-                <tr>
-                    <td>Final</td>
-                    <td>18/06/2026</td>
-                    <td>69</td>
-                    <td></td>
-                    <td>88</td>
-                </tr>
-                <tr>
-                    <td>Yarıyıl Sonu Başarı Notu</td>
-                    <td>18/06/2026</td>
-                    <td></td>
-                    <td>73</td>
-                    <td>BA</td>
-                </tr>
-                <tr>
-                    <td>Bütünleme Notu</td>
-                    <td>İLAN EDİLMEMİŞ</td>
-                    <td></td>
-                    <td></td>
-                    <td>İLAN EDİLMEMİŞ</td>
-                </tr>
-                <tr>
-                    <td>Bütünleme Sonu Başarı Notu</td>
-                    <td>İLAN EDİLMEMİŞ</td>
-                    <td></td>
-                    <td></td>
-                    <td>İLAN EDİLMEMİŞ</td>
-                </tr>
+            <table class='table table-bordered'>
+                <tr><td><b>Ders Adı</b></td><td>KİM 1201 Kimya I.</td></tr>
+                <tr><td><b>Şube Adı</b></td><td>1.Şube</td></tr>
+                <tr><td><b>AKTS Kredi</b></td><td>5</td></tr>
             </table>
-            <div class="durum_kutusu">BAŞARILI</div>
-        """.trimIndent()
-
-        val courseOption = DebisCourseOption(
-            rawValue = "B_BA+_1_9634_3_46_",
-            status = "B",
-            letterGrade = "BA",
-            sube = "1",
-            courseCode = "9634",
-            credit = "3",
-            mevcut = "46",
-            courseName = "Türk Dili II"
-        )
-
-        val parsedGrade = DebisParser.parseGradeTable(tableHtml, courseOption)
-
-        assertEquals("9634", parsedGrade.courseCode)
-        assertEquals("Türk Dili II", parsedGrade.courseName)
-        assertEquals("80", parsedGrade.vize)
-        assertEquals("88", parsedGrade.final)
-        assertNull("Bütünleme ilan edilmemiş olmalı", parsedGrade.butunleme)
-        assertEquals("BA", parsedGrade.letterGrade)
-        assertEquals("B", parsedGrade.status)
-        assertEquals("73", parsedGrade.classAverage)
-    }
-
-    @Test
-    fun testParseGradeTableWithPendingFinal() {
-        val tableHtml = """
-            <table>
-                <tr><td>Vize</td><td>10/04/2026</td><td>60</td><td></td><td>75</td></tr>
-                <tr><td>Final</td><td>İLAN EDİLMEMİŞ</td><td></td><td></td><td>İLAN EDİLMEMİŞ</td></tr>
-                <tr><td>Yarıyıl Sonu Başarı Notu</td><td>İLAN EDİLMEMİŞ</td><td></td><td></td><td>İLAN EDİLMEMİŞ</td></tr>
+            <table id='ogrnottable' class='table table-bordered table-striped'>
+                <thead>
+                    <tr>
+                        <td align='left'><b>DEĞERLENDİRME ADI</b></td>
+                        <td align='center'><b>İLAN TARİHİ</b></td>
+                        <td align='center'><b>SINIF ORT.</b></td>
+                        <td align='center'><b>ORT 2</b></td>
+                        <td align='center'><b>SİZİN NOTUNUZ</b></td>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td align='left'>Vize</td>
+                        <td align='center'>13/11/2026</td>
+                        <td align='center'>37.2</td>
+                        <td align='center'></td>
+                        <td align='center'>70</td>
+                    </tr>
+                    <tr>
+                        <td align='left'>Quiz</td>
+                        <td align='center'>13/11/2026</td>
+                        <td align='center'>52.86</td>
+                        <td align='center'></td>
+                        <td align='center'>90</td>
+                    </tr>
+                    <tr>
+                        <td align='left'>Final</td>
+                        <td align='center'>İLAN EDİLMEMİŞ</td>
+                        <td align='center'></td>
+                        <td align='center'></td>
+                        <td align='center'></td>
+                    </tr>
+                    <tr>
+                        <td align='left'>Yarıyıl Sonu Başarı Notu</td>
+                        <td align='center'>İLAN EDİLMEMİŞ</td>
+                        <td align='center'></td>
+                        <td align='center'></td>
+                        <td align='center'></td>
+                    </tr>
+                </tbody>
             </table>
         """.trimIndent()
 
         val courseOption = DebisCourseOption(
-            rawValue = "__1_1020_3_40_",
-            status = "",
-            letterGrade = null,
+            rawValue = "1128_194_1",
+            courseCode = "1128_194_1",
+            courseName = "KİM 1201 Kimya I.",
             sube = "1",
-            courseCode = "1020",
-            credit = "3",
-            mevcut = "40",
-            courseName = "Fizik II"
+            termId = "333"
         )
 
-        val parsedGrade = DebisParser.parseGradeTable(tableHtml, courseOption)
+        val parsed = DebisParser.parseGradeTable(tableHtml, courseOption)
 
-        assertEquals("75", parsedGrade.vize)
-        assertNull("Final henüz açıklanmamış olmalı", parsedGrade.final)
-        assertNull("Harf notu henüz açıklanmamış olmalı", parsedGrade.letterGrade)
+        assertEquals("1128_194_1", parsed.courseCode)
+        assertEquals("333", parsed.termId)
+        assertEquals("5", parsed.credit)
+        assertEquals("70", parsed.evaluations["Vize"])
+        assertEquals("90", parsed.evaluations["Quiz"])
+        assertEquals("70", parsed.vize)
+        assertNull("Final henüz ilan edilmemiş olmalı", parsed.final)
+        assertNull("Harf notu henüz ilan edilmemiş olmalı", parsed.letterGrade)
     }
 
     @Test
-    fun testParseActiveTermIdFromHtml() {
-        val htmlWithSelectedTerm = """
-            <select name="ogretim_donemi_id">
-                <option value="323">2024-2025 Bahar</option>
-                <option value="325" selected>2025-2026 Bahar</option>
-            </select>
-            <select name="ders">
-                <option value="B_BA+_1_9634_3_46_"> - Türk Dili II</option>
-            </select>
+    fun testParseGradeTableWithFinalAndLetterGrade() {
+        val tableHtml = """
+            <table id='ogrnottable' class='table table-bordered table-striped'>
+                <thead>
+                    <tr>
+                        <td><b>DEĞERLENDİRME ADI</b></td>
+                        <td><b>İLAN TARİHİ</b></td>
+                        <td><b>SINIF ORT.</b></td>
+                        <td><b>ORT 2</b></td>
+                        <td><b>SİZİN NOTUNUZ</b></td>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td align='left'>Vize</td>
+                        <td align='center'>29/04/2026</td>
+                        <td align='center'>76.84</td>
+                        <td align='center'></td>
+                        <td align='center'>80</td>
+                    </tr>
+                    <tr>
+                        <td align='left'>Final</td>
+                        <td align='center'>18/06/2026</td>
+                        <td align='center'>69.66</td>
+                        <td align='center'></td>
+                        <td align='center'>88</td>
+                    </tr>
+                    <tr>
+                        <td align='left'>Yarıyıl Sonu Başarı Notu</td>
+                        <td align='center'>18/06/2026</td>
+                        <td align='center'></td>
+                        <td align='center'>73.04</td>
+                        <td align='center'>BA </td>
+                    </tr>
+                    <tr>
+                        <td align='left'>Bütünleme Notu</td>
+                        <td align='center'>İLAN EDİLMEMİŞ</td>
+                        <td align='center'></td>
+                        <td align='center'></td>
+                        <td align='center'></td>
+                    </tr>
+                </tbody>
+            </table>
+            <table class='table'>
+                <tr><td colspan='5'><B>BAŞARILI</B></td></tr>
+            </table>
         """.trimIndent()
 
-        assertEquals("325", DebisParser.parseActiveTermId(htmlWithSelectedTerm))
-        val options = DebisParser.parseCourseSelectOptions(htmlWithSelectedTerm)
-        assertEquals(1, options.size)
-        assertEquals("325", options[0].termId)
+        val courseOption = DebisCourseOption(
+            rawValue = "9634_3_46",
+            courseCode = "9634_3_46",
+            courseName = "TDL 1002 Türk Dili II",
+            sube = "1",
+            termId = "324"
+        )
+
+        val parsed = DebisParser.parseGradeTable(tableHtml, courseOption)
+
+        assertEquals("80", parsed.vize)
+        assertEquals("88", parsed.final)
+        assertNull("Bütünleme ilan edilmemiş olmalı", parsed.butunleme)
+        assertEquals("BA", parsed.letterGrade)
+        assertEquals("73.04", parsed.classAverage)
+        assertEquals("B", parsed.status)
+    }
+
+    @Test
+    fun testCourseGradeJsonSerializationWithEvaluations() {
+        val midTermOnly = CourseGrade(
+            courseCode = "1128_194_1",
+            courseName = "KİM 1201 Kimya I.",
+            credit = "5",
+            sube = "1",
+            termId = "333",
+            evaluations = linkedMapOf("Vize" to "70", "Quiz" to "90"),
+            vize = "70"
+        )
+
+        assertEquals("Vize: 70  •  Quiz: 90  •  Final: —", midTermOnly.formatEvaluationsSummary())
+
+        val withFinalAndLetter = CourseGrade(
+            courseCode = "9634_3_46",
+            courseName = "TDL 1002 Türk Dili II",
+            credit = "2",
+            sube = "1",
+            termId = "324",
+            evaluations = linkedMapOf("Vize" to "80", "Final" to "88"),
+            vize = "80",
+            final = "88",
+            letterGrade = "BA"
+        )
+
+        assertEquals("Vize: 80  •  Final: 88", withFinalAndLetter.formatEvaluationsSummary())
+
+        val json = midTermOnly.toJsonObject()
+        val encodedCourseCode: String? = json.optString("courseCode")
+        if (!encodedCourseCode.isNullOrEmpty()) {
+            val restored = CourseGrade.fromJsonObject(json)
+            assertEquals("1128_194_1", restored.courseCode)
+            assertEquals("333", restored.termId)
+            assertEquals("70", restored.evaluations["Vize"])
+            assertEquals("90", restored.evaluations["Quiz"])
+            assertEquals("70", restored.vize)
+            assertEquals("Vize: 70  •  Quiz: 90  •  Final: —", restored.formatEvaluationsSummary())
+        }
     }
 }
