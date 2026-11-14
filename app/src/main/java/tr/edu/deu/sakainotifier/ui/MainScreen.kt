@@ -884,7 +884,7 @@ fun MainScreen(
                                         }
                                     }
 
-                                    accountsToDisplay.forEach { acc ->
+                                    accountsToDisplay.forEachIndexed { displayIdx, acc ->
                                         val accountIndex = registeredAccounts.indexOfFirst {
                                             it.username.equals(acc.username, ignoreCase = true)
                                         }.let { if (it >= 0) it else 0 }
@@ -900,83 +900,81 @@ fun MainScreen(
                                             append(" • ${accGrades.size} Ders")
                                         }
 
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
-                                            border = BorderStroke(1.dp, accTheme.cardBorder.copy(alpha = 0.5f)),
-                                            modifier = Modifier.fillMaxWidth()
+                                        if (displayIdx > 0) {
+                                            HorizontalDivider(
+                                                color = MaterialTheme.colorScheme.outlineVariant,
+                                                modifier = Modifier.padding(vertical = 4.dp)
+                                            )
+                                        }
+
+                                        Column(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
-                                            Column(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(8.dp),
-                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            Surface(
+                                                color = accTheme.badgeBg,
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, accTheme.cardBorder.copy(alpha = 0.7f))
                                             ) {
-                                                Surface(
-                                                    color = accTheme.badgeBg,
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    border = BorderStroke(1.dp, accTheme.cardBorder.copy(alpha = 0.7f))
-                                                ) {
+                                                Text(
+                                                    text = accountLabel,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = accTheme.badgeText,
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+
+                                            when {
+                                                !canAccountLoginToObs(acc) -> {
                                                     Text(
-                                                        text = accountLabel,
+                                                        text = "⚠️ OBS girişi için bu hesabın '✏️ Düzenle' bölümünden öğrenci e-postasını (ad.soyad@ogr.deu.edu.tr) ekleyin.",
                                                         fontSize = 11.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = accTheme.badgeText,
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                        color = Color(0xFFE65100)
                                                     )
                                                 }
-
-                                                when {
-                                                    !canAccountLoginToObs(acc) -> {
-                                                        Text(
-                                                            text = "⚠️ OBS girişi için bu hesabın '✏️ Düzenle' bölümünden öğrenci e-postasını (ad.soyad@ogr.deu.edu.tr) ekleyin.",
-                                                            fontSize = 11.sp,
-                                                            color = Color(0xFFE65100)
-                                                        )
-                                                    }
-                                                    accGrades.isEmpty() -> {
-                                                        Text(
-                                                            text = "Henüz ders notu çekilmedi. '🔄 Yenile' butonuna dokunun.",
-                                                            fontSize = 11.sp,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                        )
-                                                    }
-                                                    else -> {
-                                                        accGrades.forEach { grade ->
-                                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                                            Row(
-                                                                modifier = Modifier
-                                                                    .fillMaxWidth()
-                                                                    .padding(vertical = 2.dp),
-                                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                                verticalAlignment = Alignment.CenterVertically
-                                                            ) {
-                                                                Column(modifier = Modifier.weight(1f)) {
+                                                accGrades.isEmpty() -> {
+                                                    Text(
+                                                        text = "Henüz ders notu çekilmedi. '🔄 Yenile' butonuna dokunun.",
+                                                        fontSize = 11.sp,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                else -> {
+                                                    accGrades.forEach { grade ->
+                                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .padding(vertical = 2.dp),
+                                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = grade.courseName,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    fontSize = 12.sp,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                                Text(
+                                                                    text = grade.formatEvaluationsSummary(),
+                                                                    fontSize = 11.sp,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                            if (!grade.letterGrade.isNullOrBlank()) {
+                                                                Surface(
+                                                                    color = if (grade.status == "K") Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                                                    shape = RoundedCornerShape(6.dp)
+                                                                ) {
                                                                     Text(
-                                                                        text = grade.courseName,
-                                                                        fontWeight = FontWeight.SemiBold,
-                                                                        fontSize = 12.sp,
-                                                                        color = MaterialTheme.colorScheme.onSurface
-                                                                    )
-                                                                    Text(
-                                                                        text = grade.formatEvaluationsSummary(),
+                                                                        text = grade.letterGrade,
+                                                                        fontWeight = FontWeight.Bold,
                                                                         fontSize = 11.sp,
-                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                        color = if (grade.status == "K") Color(0xFFC62828) else Color(0xFF2E7D32),
+                                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                                                                     )
-                                                                }
-                                                                if (!grade.letterGrade.isNullOrBlank()) {
-                                                                    Surface(
-                                                                        color = if (grade.status == "K") Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
-                                                                        shape = RoundedCornerShape(6.dp)
-                                                                    ) {
-                                                                        Text(
-                                                                            text = grade.letterGrade,
-                                                                            fontWeight = FontWeight.Bold,
-                                                                            fontSize = 11.sp,
-                                                                            color = if (grade.status == "K") Color(0xFFC62828) else Color(0xFF2E7D32),
-                                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                                        )
-                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -1278,33 +1276,6 @@ fun MainScreen(
                                                                     fontSize = 10.sp,
                                                                     fontWeight = FontWeight.SemiBold,
                                                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                                )
-                                                            }
-                                                        }
-                                                        if (canAccountLoginToObs(acc)) {
-                                                            Surface(
-                                                                color = Color(0xFFE8F5E9),
-                                                                shape = RoundedCornerShape(4.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = "📊 OBS Hazır",
-                                                                    fontSize = 10.sp,
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                    color = Color(0xFF2E7D32),
-                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                                                                )
-                                                            }
-                                                        } else {
-                                                            Surface(
-                                                                color = Color(0xFFFFF3E0),
-                                                                shape = RoundedCornerShape(4.dp)
-                                                            ) {
-                                                                Text(
-                                                                    text = "⚠️ Mail/OBS Yok",
-                                                                    fontSize = 10.sp,
-                                                                    fontWeight = FontWeight.SemiBold,
-                                                                    color = Color(0xFFE65100),
                                                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                                                                 )
                                                             }
