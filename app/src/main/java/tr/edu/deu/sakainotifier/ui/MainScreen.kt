@@ -39,6 +39,7 @@ import tr.edu.deu.sakainotifier.data.api.WebmailTestResult
 import tr.edu.deu.sakainotifier.data.api.SakaiApiClient
 import tr.edu.deu.sakainotifier.data.api.SakaiAuthClient
 import tr.edu.deu.sakainotifier.data.api.SakaiUsernameUtils
+import tr.edu.deu.sakainotifier.data.model.CourseGrade
 import tr.edu.deu.sakainotifier.data.model.SakaiAccount
 import tr.edu.deu.sakainotifier.data.model.SakaiNotification
 import tr.edu.deu.sakainotifier.data.storage.DebisGradeStateManager
@@ -83,10 +84,104 @@ fun MainScreen(
     val debisGradeStateManager = remember { DebisGradeStateManager(context) }
     var isGradeMonitoringActive by remember { mutableStateOf(debisGradeStateManager.isGradeMonitoringActive()) }
     var showGradesSummary by remember { mutableStateOf(false) }
-    var savedDebisGrades by remember(registeredAccounts) {
-        mutableStateOf(registeredAccounts.flatMap { debisGradeStateManager.getSavedGrades(it.username) })
+    var savedDebisGradesByAccount by remember(registeredAccounts) {
+        mutableStateOf<Map<String, List<CourseGrade>>>(
+            registeredAccounts.associate { it.username to debisGradeStateManager.getSavedGrades(it.username) }
+        )
     }
+    val totalSavedDebisGrades = savedDebisGradesByAccount.values.sumOf { it.size }
+    var selectedGradeAccountFilter by remember { mutableStateOf<String?>(null) }
     var isSyncingDebisGrades by remember { mutableStateOf(false) }
+
+    fun refreshSavedGradesState(accounts: List<SakaiAccount> = securePrefs.getAccounts()) {
+        savedDebisGradesByAccount = accounts.associate {
+            it.username to debisGradeStateManager.getSavedGrades(it.username)
+        }
+    }
+
+    suspend fun syncObsGradesForAccounts(
+        accountsToSync: List<SakaiAccount>,
+        showToast: Boolean
+    ) {
+        val eligibleAccounts = accountsToSync.filter { canAccountLoginToObs(it) }
+        if (eligibleAccounts.isEmpty() || isSyncingDebisGrades) return
+
+        isSyncingDebisGrades = true
+        try {
+            var totalCoursesSynced = 0
+            var totalNewDiffs = 0
+            var anyBootstrapped = false
+            var lastErrorMsg: String? = null
+
+            for ((index, acc) in eligibleAccounts.withIndex()) {
+                if (index > 0) {
+                    delay(1000)
+                }
+                val cachedCookie = debisGradeStateManager.getSessionCookie(acc.username)
+                val res = debisClient.fetchAllCurrentTermGrades(acc, cachedCookie)
+                if (res.isSuccess) {
+                    val (activeCookie, freshGrades) = res.getOrThrow()
+                    debisGradeStateManager.saveSessionCookie(acc.username, activeCookie)
+                    if (freshGrades.isNotEmpty()) {
+                        totalCoursesSynced += freshGrades.size
+                        if (debisGradeStateManager.isFirstGradeBoot(acc.username) ||
+                            debisGradeStateManager.getSavedGrades(acc.username).isEmpty()
+                        ) {
+                            debisGradeStateManager.saveGradeSnapshot(acc.username, freshGrades)
+                            debisGradeStateManager.setFirstGradeBootCompleted(acc.username)
+                            anyBootstrapped = true
+                        } else {
+                            val diffs = debisGradeStateManager.detectDifferences(acc.username, freshGrades)
+                            for (diff in diffs) {
+                                NotificationHelper.showGradeNotification(context, diff, acc.username)
+                            }
+                            totalNewDiffs += diffs.size
+                        }
+                    }
+                } else {
+                    lastErrorMsg = res.exceptionOrNull()?.message
+                }
+            }
+
+            refreshSavedGradesState()
+            if (showToast) {
+                when {
+                    anyBootstrapped && totalCoursesSynced > 0 -> {
+                        showGradesSummary = true
+                        Toast.makeText(
+                            context,
+                            "✅ ${eligibleAccounts.size} hesap için $totalCoursesSynced dersin notları hafızaya alındı.",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    totalNewDiffs > 0 -> {
+                        showGradesSummary = true
+                        Toast.makeText(
+                            context,
+                            "🎓 $totalNewDiffs yeni sınav notu tespit edildi!",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    totalCoursesSynced > 0 -> {
+                        Toast.makeText(
+                            context,
+                            "✅ DEBİS/OBS not takibi aktif ($totalCoursesSynced ders güncel).",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    !lastErrorMsg.isNullOrBlank() -> {
+                        Toast.makeText(
+                            context,
+                            "⚠️ OBS senkronizasyon uyarısı: $lastErrorMsg",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                }
+            }
+        } finally {
+            isSyncingDebisGrades = false
+        }
+    }
     var isNightQuietHoursEnabled by remember { mutableStateOf(securePrefs.isNightQuietHoursEnabled) }
     var selectedInterval by remember { mutableStateOf(securePrefs.pollIntervalMinutes) }
     var lastCheckTime by remember { mutableStateOf(securePrefs.lastCheckTimestamp) }
@@ -169,7 +264,7 @@ fun MainScreen(
                 recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                 lastCheckTime = securePrefs.lastCheckTimestamp
                 isNightQuietHoursEnabled = securePrefs.isNightQuietHoursEnabled
-                savedDebisGrades = registeredAccounts.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                refreshSavedGradesState(registeredAccounts)
                 isGradeMonitoringActive = debisGradeStateManager.isGradeMonitoringActive()
             }
         }
@@ -187,6 +282,18 @@ fun MainScreen(
         }
     }
 
+    // Automatically bootstrap any eligible account whose OBS grade snapshot is still empty while active
+    LaunchedEffect(registeredAccounts, isGradeMonitoringActive) {
+        if (isGradeMonitoringActive && !isSyncingDebisGrades) {
+            val unsyncedAccounts = registeredAccounts.filter { acc ->
+                canAccountLoginToObs(acc) && debisGradeStateManager.getSavedGrades(acc.username).isEmpty()
+            }
+            if (unsyncedAccounts.isNotEmpty()) {
+                syncObsGradesForAccounts(unsyncedAccounts, showToast = false)
+            }
+        }
+    }
+
     // Auto-refresh notifications and DEBİS grades when background worker updates SharedPreferences
     DisposableEffect(Unit) {
         val listener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
@@ -198,8 +305,7 @@ fun MainScreen(
             if (key != null && (key.startsWith(DebisGradeStateManager.KEY_GRADE_SNAPSHOT) ||
                     key == DebisGradeStateManager.KEY_GRADE_MONITORING_ACTIVE)
             ) {
-                val accs = securePrefs.getAccounts()
-                savedDebisGrades = accs.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                refreshSavedGradesState()
                 isGradeMonitoringActive = debisGradeStateManager.isGradeMonitoringActive()
             }
         }
@@ -622,13 +728,13 @@ fun MainScreen(
                                                 modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
                                             )
                                         }
-                                    } else if (savedDebisGrades.isNotEmpty()) {
+                                    } else if (totalSavedDebisGrades > 0) {
                                         Surface(
                                             color = Color(0xFFE3F2FD),
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
-                                                text = "Hafızada (${savedDebisGrades.size} Ders)",
+                                                text = "Hafızada ($totalSavedDebisGrades Ders)",
                                                 color = Color(0xFF1565C0),
                                                 fontSize = 10.sp,
                                                 fontWeight = FontWeight.Bold,
@@ -639,24 +745,24 @@ fun MainScreen(
                                 }
                                 Text(
                                     text = when {
-                                        isGradeMonitoringActive && savedDebisGrades.isNotEmpty() ->
-                                            "${savedDebisGrades.size} ders hafızada; yeni sınav notu açıklandığında bildirim gönderilir."
-                                        !isGradeMonitoringActive && savedDebisGrades.isNotEmpty() ->
-                                            "Takip kapalı (arka planda istek atılmaz). ${savedDebisGrades.size} dersin not hafızası korunuyor."
+                                        isGradeMonitoringActive && totalSavedDebisGrades > 0 ->
+                                            "$totalSavedDebisGrades ders hafızada; yeni sınav notu açıklandığında bildirim gönderilir."
+                                        !isGradeMonitoringActive && totalSavedDebisGrades > 0 ->
+                                            "Takip kapalı (arka planda istek atılmaz). $totalSavedDebisGrades dersin not hafızası korunuyor."
                                         else ->
                                             "Vize, quiz, final ve harf notlarını otomatik kontrol eder."
                                     },
                                     fontSize = 12.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                if (savedDebisGrades.isNotEmpty()) {
+                                if (totalSavedDebisGrades > 0 || isGradeMonitoringActive) {
                                     Spacer(modifier = Modifier.height(4.dp))
                                     TextButton(
                                         onClick = { showGradesSummary = !showGradesSummary },
                                         contentPadding = PaddingValues(horizontal = 0.dp, vertical = 2.dp)
                                     ) {
                                         Text(
-                                            text = if (showGradesSummary) "▲ Notları Gizle" else "📋 Notları Gör (${savedDebisGrades.size})",
+                                            text = if (showGradesSummary) "▲ Notları Gizle" else "📋 Notları Gör ($totalSavedDebisGrades Ders)",
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.SemiBold,
                                             color = MaterialTheme.colorScheme.secondary
@@ -689,77 +795,8 @@ fun MainScreen(
                                         WorkScheduler.cancel(context)
                                     }
                                     if (active) {
-                                        isSyncingDebisGrades = true
                                         coroutineScope.launch {
-                                            try {
-                                                var totalCoursesSynced = 0
-                                                var totalNewDiffs = 0
-                                                var anyBootstrapped = false
-                                                var lastErrorMsg: String? = null
-
-                                                for (acc in registeredAccounts.filter { canAccountLoginToObs(it) }) {
-                                                    val cachedCookie = debisGradeStateManager.getSessionCookie(acc.username)
-                                                    val res = debisClient.fetchAllCurrentTermGrades(acc, cachedCookie)
-                                                    if (res.isSuccess) {
-                                                        val (activeCookie, freshGrades) = res.getOrThrow()
-                                                        debisGradeStateManager.saveSessionCookie(acc.username, activeCookie)
-                                                        if (freshGrades.isNotEmpty()) {
-                                                            totalCoursesSynced += freshGrades.size
-                                                            if (debisGradeStateManager.isFirstGradeBoot(acc.username) ||
-                                                                debisGradeStateManager.getSavedGrades(acc.username).isEmpty()
-                                                            ) {
-                                                                debisGradeStateManager.saveGradeSnapshot(acc.username, freshGrades)
-                                                                debisGradeStateManager.setFirstGradeBootCompleted(acc.username)
-                                                                anyBootstrapped = true
-                                                            } else {
-                                                                val diffs = debisGradeStateManager.detectDifferences(acc.username, freshGrades)
-                                                                for (diff in diffs) {
-                                                                    NotificationHelper.showGradeNotification(context, diff, acc.username)
-                                                                }
-                                                                totalNewDiffs += diffs.size
-                                                            }
-                                                        }
-                                                    } else {
-                                                        lastErrorMsg = res.exceptionOrNull()?.message
-                                                    }
-                                                }
-
-                                                savedDebisGrades = registeredAccounts.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
-                                                when {
-                                                    anyBootstrapped && totalCoursesSynced > 0 -> {
-                                                        showGradesSummary = true
-                                                        Toast.makeText(
-                                                            context,
-                                                            "✅ $totalCoursesSynced dersin mevcut notları hafızaya alındı.",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
-                                                    }
-                                                    totalNewDiffs > 0 -> {
-                                                        showGradesSummary = true
-                                                        Toast.makeText(
-                                                            context,
-                                                            "🎓 $totalNewDiffs yeni sınav notu tespit edildi!",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
-                                                    }
-                                                    totalCoursesSynced > 0 -> {
-                                                        Toast.makeText(
-                                                            context,
-                                                            "✅ DEBİS/OBS not takibi aktif ($totalCoursesSynced ders güncel).",
-                                                            Toast.LENGTH_SHORT
-                                                        ).show()
-                                                    }
-                                                    !lastErrorMsg.isNullOrBlank() -> {
-                                                        Toast.makeText(
-                                                            context,
-                                                            "⚠️ OBS senkronizasyon uyarısı: $lastErrorMsg",
-                                                            Toast.LENGTH_LONG
-                                                        ).show()
-                                                    }
-                                                }
-                                            } finally {
-                                                isSyncingDebisGrades = false
-                                            }
+                                            syncObsGradesForAccounts(registeredAccounts, showToast = true)
                                         }
                                     } else {
                                         Toast.makeText(
@@ -772,8 +809,17 @@ fun MainScreen(
                             )
                         }
 
-                        // Collapsible Saved DEBİS Grades Table
-                        if (showGradesSummary && savedDebisGrades.isNotEmpty()) {
+                        // Collapsible Saved DEBİS / OBS Grades Table (Per-Account)
+                        if (showGradesSummary && (totalSavedDebisGrades > 0 || isGradeMonitoringActive)) {
+                            val activeGradeAccountFilter = selectedGradeAccountFilter?.takeIf { filter ->
+                                registeredAccounts.any { it.username.equals(filter, ignoreCase = true) }
+                            }
+                            val accountsToDisplay = if (activeGradeAccountFilter == null) {
+                                registeredAccounts
+                            } else {
+                                registeredAccounts.filter { it.username.equals(activeGradeAccountFilter, ignoreCase = true) }
+                            }
+
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
@@ -784,48 +830,157 @@ fun MainScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Text(
-                                        text = "📋 Kayıtlı DEBİS Ders Notları",
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    savedDebisGrades.forEach { grade ->
-                                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 2.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "📋 Kayıtlı DEBİS / OBS Ders Notları",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                coroutineScope.launch {
+                                                    syncObsGradesForAccounts(registeredAccounts, showToast = true)
+                                                }
+                                            },
+                                            enabled = !isSyncingDebisGrades,
+                                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                                         ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = grade.courseName,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    fontSize = 12.sp,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                                Text(
-                                                    text = grade.formatEvaluationsSummary(),
-                                                    fontSize = 11.sp,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            Text(
+                                                text = if (isSyncingDebisGrades) "Yenileniyor..." else "🔄 Yenile",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+
+                                    if (registeredAccounts.size > 1) {
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            FilterChip(
+                                                selected = activeGradeAccountFilter == null,
+                                                onClick = { selectedGradeAccountFilter = null },
+                                                label = { Text("Tümü ($totalSavedDebisGrades)", fontSize = 11.sp) }
+                                            )
+                                            registeredAccounts.forEach { acc ->
+                                                val accCount = savedDebisGradesByAccount[acc.username]?.size ?: 0
+                                                val isAccSelected = activeGradeAccountFilter?.equals(acc.username, ignoreCase = true) == true
+                                                FilterChip(
+                                                    selected = isAccSelected,
+                                                    onClick = {
+                                                        selectedGradeAccountFilter = if (isAccSelected) null else acc.username
+                                                    },
+                                                    label = { Text("🎓 ${acc.shortUsername} ($accCount)", fontSize = 11.sp) }
                                                 )
                                             }
-                                            if (!grade.letterGrade.isNullOrBlank()) {
+                                        }
+                                    }
+
+                                    accountsToDisplay.forEach { acc ->
+                                        val accountIndex = registeredAccounts.indexOfFirst {
+                                            it.username.equals(acc.username, ignoreCase = true)
+                                        }.let { if (it >= 0) it else 0 }
+                                        val accTheme = accountBadgeThemeFor(accountIndex)
+                                        val accGrades = savedDebisGradesByAccount[acc.username].orEmpty()
+                                        val emailPrefix = acc.emailAddress
+                                            ?.substringBefore("@")
+                                            ?.trim()
+                                            ?.takeIf { it.isNotBlank() && !it.equals(acc.shortUsername, ignoreCase = true) }
+                                        val accountLabel = buildString {
+                                            append("🎓 Öğrenci: ${acc.shortUsername}")
+                                            if (emailPrefix != null) append(" ($emailPrefix)")
+                                            append(" • ${accGrades.size} Ders")
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                                            border = BorderStroke(1.dp, accTheme.cardBorder.copy(alpha = 0.5f)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(8.dp),
+                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
                                                 Surface(
-                                                    color = if (grade.status == "K") Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
-                                                    shape = RoundedCornerShape(6.dp)
+                                                    color = accTheme.badgeBg,
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, accTheme.cardBorder.copy(alpha = 0.7f))
                                                 ) {
                                                     Text(
-                                                        text = grade.letterGrade,
-                                                        fontWeight = FontWeight.Bold,
+                                                        text = accountLabel,
                                                         fontSize = 11.sp,
-                                                        color = if (grade.status == "K") Color(0xFFC62828) else Color(0xFF2E7D32),
-                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = accTheme.badgeText,
+                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                                     )
+                                                }
+
+                                                when {
+                                                    !canAccountLoginToObs(acc) -> {
+                                                        Text(
+                                                            text = "⚠️ OBS girişi için bu hesabın '✏️ Düzenle' bölümünden öğrenci e-postasını (ad.soyad@ogr.deu.edu.tr) ekleyin.",
+                                                            fontSize = 11.sp,
+                                                            color = Color(0xFFE65100)
+                                                        )
+                                                    }
+                                                    accGrades.isEmpty() -> {
+                                                        Text(
+                                                            text = "Henüz ders notu çekilmedi. '🔄 Yenile' butonuna dokunun.",
+                                                            fontSize = 11.sp,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                    else -> {
+                                                        accGrades.forEach { grade ->
+                                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(vertical = 2.dp),
+                                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Column(modifier = Modifier.weight(1f)) {
+                                                                    Text(
+                                                                        text = grade.courseName,
+                                                                        fontWeight = FontWeight.SemiBold,
+                                                                        fontSize = 12.sp,
+                                                                        color = MaterialTheme.colorScheme.onSurface
+                                                                    )
+                                                                    Text(
+                                                                        text = grade.formatEvaluationsSummary(),
+                                                                        fontSize = 11.sp,
+                                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                    )
+                                                                }
+                                                                if (!grade.letterGrade.isNullOrBlank()) {
+                                                                    Surface(
+                                                                        color = if (grade.status == "K") Color(0xFFFFEBEE) else Color(0xFFE8F5E9),
+                                                                        shape = RoundedCornerShape(6.dp)
+                                                                    ) {
+                                                                        Text(
+                                                                            text = grade.letterGrade,
+                                                                            fontWeight = FontWeight.Bold,
+                                                                            fontSize = 11.sp,
+                                                                            color = if (grade.status == "K") Color(0xFFC62828) else Color(0xFF2E7D32),
+                                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                                        )
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -1127,6 +1282,33 @@ fun MainScreen(
                                                                 )
                                                             }
                                                         }
+                                                        if (canAccountLoginToObs(acc)) {
+                                                            Surface(
+                                                                color = Color(0xFFE8F5E9),
+                                                                shape = RoundedCornerShape(4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "📊 OBS Hazır",
+                                                                    fontSize = 10.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = Color(0xFF2E7D32),
+                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        } else {
+                                                            Surface(
+                                                                color = Color(0xFFFFF3E0),
+                                                                shape = RoundedCornerShape(4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "⚠️ Mail/OBS Yok",
+                                                                    fontSize = 10.sp,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = Color(0xFFE65100),
+                                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                                )
+                                                            }
+                                                        }
                                                     }
                                                     Text(
                                                         text = acc.username,
@@ -1163,10 +1345,15 @@ fun MainScreen(
                                                             inputEmail = ""
                                                         }
                                                         securePrefs.removeAccount(acc.username)
+                                                        debisGradeStateManager.clearAccountState(acc.username)
                                                         if (selectedAccountFilter?.equals(acc.shortUsername, ignoreCase = true) == true) {
                                                             selectedAccountFilter = null
                                                         }
+                                                        if (selectedGradeAccountFilter?.equals(acc.username, ignoreCase = true) == true) {
+                                                            selectedGradeAccountFilter = null
+                                                        }
                                                         registeredAccounts = securePrefs.getAccounts()
+                                                        refreshSavedGradesState(registeredAccounts)
                                                         recentNotifications = stateManager.getAllRecentNotifications(registeredAccounts.map { it.username })
                                                         Toast.makeText(context, "${acc.shortUsername} hesabı silindi.", Toast.LENGTH_SHORT).show()
                                                     }
@@ -1272,10 +1459,12 @@ fun MainScreen(
                         fun saveAccountAndComplete(acc: SakaiAccount, feedbackMsg: String, isWarning: Boolean = false) {
                             if (editingAccountUsername != null && !editingAccountUsername.equals(acc.username, ignoreCase = true)) {
                                 securePrefs.removeAccount(editingAccountUsername!!)
+                                debisGradeStateManager.clearAccountState(editingAccountUsername!!)
                             }
 
                             securePrefs.saveAccount(acc)
                             registeredAccounts = securePrefs.getAccounts()
+                            refreshSavedGradesState(registeredAccounts)
                             stateManager.checkAccountSwitch(acc.username)
 
                             editingAccountUsername = null
@@ -1308,6 +1497,11 @@ fun MainScreen(
                                         stateManager.filterNewEmailNotifications(mailList)
                                         stateManager.markProcessed(mailList.take(5))
                                     }
+                                }
+
+                                // If OBS grade monitoring is active, bootstrap/sync this account's OBS grades too
+                                if (isGradeMonitoringActive && canAccountLoginToObs(acc)) {
+                                    syncObsGradesForAccounts(listOf(acc), showToast = false)
                                 }
 
                                 recentNotifications = stateManager.getAllRecentNotifications(securePrefs.getAccounts().map { it.username })
@@ -1685,7 +1879,7 @@ fun MainScreen(
                                                                     parts.add("notlar güncel (${freshGrades.size} ders)")
                                                                 }
                                                             }
-                                                            savedDebisGrades = currentAccs.flatMap { debisGradeStateManager.getSavedGrades(it.username) }
+                                                            refreshSavedGradesState(currentAccs)
                                                         } else {
                                                             parts.add("notlar: ders bulunamadı")
                                                         }
@@ -1693,6 +1887,8 @@ fun MainScreen(
                                                         val gErr = debisRes.exceptionOrNull()?.message?.take(80) ?: "Bağlantı hatası"
                                                         parts.add("OBS: ⚠️ $gErr")
                                                     }
+                                                } else if (isGradeMonitoringActive) {
+                                                    parts.add("OBS: mail eksik")
                                                 }
 
                                                 summaries.add("${acc.shortUsername}: " + parts.joinToString(", "))
@@ -2060,6 +2256,38 @@ private data class AccountBadgeTheme(
     val cardBorder: Color
 )
 
+private val ACCOUNT_BADGE_THEMES = listOf(
+    // Account 1: Blue / Navy theme
+    AccountBadgeTheme(
+        badgeBg = Color(0xFFDBEAFE),
+        badgeText = Color(0xFF1E40AF),
+        cardBorder = Color(0xFF3B82F6)
+    ),
+    // Account 2: Purple / Violet theme
+    AccountBadgeTheme(
+        badgeBg = Color(0xFFF3E8FF),
+        badgeText = Color(0xFF6B21A8),
+        cardBorder = Color(0xFFA855F7)
+    ),
+    // Account 3: Teal / Emerald theme
+    AccountBadgeTheme(
+        badgeBg = Color(0xFFD1FAE5),
+        badgeText = Color(0xFF065F46),
+        cardBorder = Color(0xFF10B981)
+    ),
+    // Account 4: Amber / Warm theme
+    AccountBadgeTheme(
+        badgeBg = Color(0xFFFEF3C7),
+        badgeText = Color(0xFF92400E),
+        cardBorder = Color(0xFFF59E0B)
+    )
+)
+
+private fun accountBadgeThemeFor(accountIndex: Int): AccountBadgeTheme {
+    val safeIndex = if (accountIndex >= 0) accountIndex else 0
+    return ACCOUNT_BADGE_THEMES[safeIndex % ACCOUNT_BADGE_THEMES.size]
+}
+
 @Composable
 fun NotificationItemCard(
     notif: SakaiNotification,
@@ -2078,34 +2306,7 @@ fun NotificationItemCard(
         it.username.equals(rawUsername, ignoreCase = true)
     }.let { if (it >= 0) it else 0 }
 
-    val themes = listOf(
-        // Account 1: Blue / Navy theme
-        AccountBadgeTheme(
-            badgeBg = Color(0xFFDBEAFE),
-            badgeText = Color(0xFF1E40AF),
-            cardBorder = Color(0xFF3B82F6)
-        ),
-        // Account 2: Purple / Violet theme
-        AccountBadgeTheme(
-            badgeBg = Color(0xFFF3E8FF),
-            badgeText = Color(0xFF6B21A8),
-            cardBorder = Color(0xFFA855F7)
-        ),
-        // Account 3: Teal / Emerald theme
-        AccountBadgeTheme(
-            badgeBg = Color(0xFFD1FAE5),
-            badgeText = Color(0xFF065F46),
-            cardBorder = Color(0xFF10B981)
-        ),
-        // Account 4: Amber / Warm theme
-        AccountBadgeTheme(
-            badgeBg = Color(0xFFFEF3C7),
-            badgeText = Color(0xFF92400E),
-            cardBorder = Color(0xFFF59E0B)
-        )
-    )
-
-    val currentTheme = themes[accountIndex % themes.size]
+    val currentTheme = accountBadgeThemeFor(accountIndex)
     var isExpanded by remember { mutableStateOf(false) }
 
     Card(

@@ -225,4 +225,15 @@ class DebisGradeStateManager(context: Context) {
 
         return differences
     }
+
+    /**
+     * Removes saved OBS grade snapshot, first-boot flag, and cached session cookie for an account.
+     */
+    fun clearAccountState(username: String) {
+        prefs.edit()
+            .remove(getAccountKey(KEY_GRADE_SNAPSHOT, username))
+            .remove(getAccountKey(KEY_IS_FIRST_GRADE_BOOT, username))
+            .remove(getAccountKey(KEY_DEBIS_COOKIE, username))
+            .apply()
+    }
 }
